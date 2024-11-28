@@ -8,9 +8,9 @@ def transform(_rays: torch.Tensor, _theta: torch.Tensor) -> torch.Tensor:
     return torch.matmul(_rays, t2)
 
 
-def scores(_rays, source_position: torch.Tensor, alpha: torch.Tensor=torch.tensor([50.])) -> torch.Tensor:
-    signed_distances = ((_rays[:, 0:2] - source_position) * tools.cross_vectors(_rays[:, 2:4])).sum(dim=1)
-    return torch.exp(-alpha * signed_distances * signed_distances)
+def scores(_rays, source_position: torch.Tensor, alpha: torch.Tensor=torch.tensor([0.14])) -> torch.Tensor:
+    scaled_signed_distances = ((_rays[:, 0:2] - source_position) * tools.cross_vectors(_rays[:, 2:4])).sum(dim=1) / alpha
+    return torch.exp(-scaled_signed_distances * scaled_signed_distances)
 
 
 def generate_random(count: int) -> torch.Tensor:

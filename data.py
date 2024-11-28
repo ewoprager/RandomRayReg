@@ -1,5 +1,8 @@
+import copy
+from typing import Union
 import numpy as np
 import torch
+import torchvision.transforms
 
 import tools
 
@@ -32,16 +35,18 @@ class Volume:
 
 
 class Image:
-    def __init__(self, data: torch.Tensor):
+    def __init__(self,
+                 data: torch.Tensor):
         self.data = data
         self.size = data.size()
 
-    def samples(self, _rays: torch.Tensor) -> torch.Tensor:
+    def samples(self, _rays: torch.Tensor, blur_sigma: Union[torch.Tensor, None]=None) -> torch.Tensor:
+        data = self.data if blur_sigma is None else tools.gaussian_blur1d(self.data, blur_sigma.item())
         xs = _rays[:, 1] - (_rays[:, 0] / _rays[:, 2]) * _rays[:, 3]
         xs_transformed = .5 * (xs + 1.) * (torch.tensor(self.size, dtype=torch.float32) - 1.)
         i0s = torch.floor(xs_transformed.clone().detach()).type(torch.int64)
         fs = xs_transformed - i0s.type(torch.float32)
-        with_zero = torch.cat((torch.zeros(1), self.data))
+        with_zero = torch.cat((torch.zeros(1), data))
         i0s = i0s + 1
         i1s = i0s + 1
         n = with_zero.size()[0]

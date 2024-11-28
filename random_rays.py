@@ -24,15 +24,20 @@ class RandomRays:
         transformed_rays = self.data if theta is None else ray.transform(self.data, theta)
         ray.plot(axes, transformed_rays, self.registration.image.samples(transformed_rays))
 
-    def evaluate(self, theta: torch.Tensor, alpha: torch.Tensor=torch.tensor([50.])) -> (torch.Tensor, torch.Tensor):
+    def evaluate(self, theta: torch.Tensor, alpha: torch.Tensor=torch.tensor([0.14]), blur_constant: torch.Tensor=torch.Tensor([1.])) -> (torch.Tensor, torch.Tensor):
         transformed_rays = ray.transform(self.data, theta)
+        # scoring rays on distance from source
         scores = ray.scores(transformed_rays, self.registration.source_position, alpha=alpha)
-        samples = self.registration.image.samples(transformed_rays)
+        # sampling from blurred image for every ray
+        normalised_alpha = alpha / torch.norm(self.registration.source_position)
+        blur_sigma = blur_constant * normalised_alpha
+        samples = self.registration.image.samples(transformed_rays, blur_sigma=blur_sigma)
+        # calculating similarity from scored intensity pairs
         negative_zncc = -tools.zero_normalised_cross_correlation(samples, self.intensities, scores)
         sum_n = scores.sum()
         return negative_zncc, sum_n
 
-    def evaluate_with_grad(self, theta: torch.Tensor, alpha: torch.Tensor=torch.tensor([50.])) -> (torch.Tensor, torch.Tensor):
+    def evaluate_with_grad(self, theta: torch.Tensor, alpha: torch.Tensor=torch.tensor([0.14])) -> (torch.Tensor, torch.Tensor):
         theta.grad = torch.zeros_like(theta)
         theta.requires_grad_(True)
         negative_zncc, sum_n = self.evaluate(theta, alpha=alpha)
