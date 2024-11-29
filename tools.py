@@ -10,17 +10,33 @@ def cross_vectors(vectors: torch.Tensor) -> torch.Tensor:
 
 
 def fix_angle(angle: torch.Tensor) -> torch.Tensor:
-    return torch.fmod(angle, 2. * torch.pi)
+    """
+    :param angle:
+    :return: the given angle expressed between -pi and pi
+    """
+    return torch.fmod(angle + torch.pi, 2. * torch.pi) - torch.pi
 
 
 def gaussian_blur1d(image: torch.Tensor, sigma: float) -> torch.Tensor:
+    """
+    :param image:
+    :param sigma: blur factor
+    :return: the given 1D image blurred with a Gaussian kernel of the given standard deviation
+    """
     kernel_size = int(np.ceil(2. * sigma))
     indices = torch.arange(-kernel_size, kernel_size + 1, dtype=torch.float32)
     kernel = torch.nn.functional.normalize(torch.exp(-(indices / sigma).square()), p=1., dim=0)
     return torch.nn.functional.conv1d(image[None, None, :], kernel[None, None, :], padding='same')[0, 0]
 
 
-def zero_normalised_cross_correlation(xs, ys, ns):
+def weighted_zero_normalised_cross_correlation(xs: torch.Tensor, ys: torch.Tensor, ns: torch.Tensor):
+    """
+    :param xs: a tensor of values
+    :param ys: a tensor of values
+    :param ns: a tensor of weights for the value pairs, each between 0 and 1
+    :return: The zero-normalised cross correlation between `xs` and `ys`, each pair weighted in contribution by the
+             weight given in `ns`
+    """
     sum_n = ns.sum_to_size(1)
     sum_x = (ns * xs).sum_to_size(1)
     sum_y = (ns * ys).sum_to_size(1)
