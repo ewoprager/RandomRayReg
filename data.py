@@ -1,8 +1,6 @@
-import copy
 from typing import Union
 import numpy as np
 import torch
-import torchvision.transforms
 
 import tools
 

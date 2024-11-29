@@ -1,11 +1,7 @@
-from timeit import reindent
-
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
-import tools
-import ray
 import data
 from tools import fix_angle
 from registration import Registration
