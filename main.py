@@ -29,12 +29,14 @@ class Main:
         # display drr target
         _, ax0 = plt.subplots()
         self.registration.image.display(ax0)
+        plt.title("DRR at true orientation = {:.3f} (simulated X-ray intensity)".format(self.registration.true_theta.item()))
         plt.show()
 
         # display volume
         _, ax1 = plt.subplots()
         self.registration.volume.display(ax1)
         ax1.set_ylim(-1., 1.)
+        plt.title("CT volume (X-ray attenuation coefficient)")
         plt.show()
 
         # display volume, with rays colours according to fixed image brightness
@@ -54,7 +56,7 @@ class Main:
     def plot_landscape(self):
         m: int = 8
         _, axes = plt.subplots()
-        alpha = 1.0
+        alpha = 1.
         ray_density = 1000.
         blur_constant = 4.
         # for j in range(m):
@@ -66,7 +68,8 @@ class Main:
         ss = np.zeros_like(thetas)
         ssn = 0.
         for i in range(len(thetas)):
-            s, sn = rays.evaluate(torch.tensor([thetas[i]]), alpha=torch.tensor([alpha]),
+            s, sn = rays.evaluate(torch.tensor([thetas[i]]),
+                                  alpha=torch.tensor([alpha]),
                                   blur_constant=torch.tensor([blur_constant]))
             ss[i] = s.item()
             ssn += sn
@@ -79,13 +82,17 @@ class Main:
         # ray_density *= 2.
 
         plt.legend()
+        plt.title("Optimisation landscape")
+        plt.xlabel("theta (radians)")
+        plt.ylabel("-WZNCC")
         plt.show()
 
     def optimise(self):
-        print("True theta:", self.registration.true_theta)
+        print("True theta:", -self.registration.true_theta)
 
-        alpha = 1.0
+        alpha = 1.
         ray_density = 1000.
+        blur_constant = 4.
 
         ray_count = int(np.ceil(torch.norm(self.registration.source_position) * ray_density * np.sqrt(np.pi) / alpha))
         rays = RandomRays(self.registration, ray_count=ray_count)
@@ -93,12 +100,14 @@ class Main:
         thetas = []
         ss = []
         theta = torch.pi * (-1. + 2. * torch.rand(1))
-        optimiser = torch.optim.ASGD([theta], lr=1.1)
-        for i in range(50):
+        optimiser = torch.optim.ASGD([theta], lr=1.5)
+        for i in range(30):
             def closure():
                 optimiser.zero_grad()
                 thetas.append(fix_angle(theta).item())
-                s, _ = rays.evaluate_with_grad(theta)
+                s, _ = rays.evaluate_with_grad(theta,
+                                               alpha=torch.tensor([alpha]),
+                                               blur_constant=torch.tensor([blur_constant]))
                 ss.append(s.item())
                 return s
 
@@ -107,13 +116,29 @@ class Main:
 
         _, axes = plt.subplots()
         self.registration.generate_drr(theta.clone().detach()).display(axes)
+        plt.title("DRR at final orientation = {:.3f} (simulated X-ray intensity)".format(theta.item()))
         plt.show()
 
         error = fix_angle(theta + self.registration.true_theta)
         print("Distance: ", torch.abs(error).item())
 
-        plt.plot(thetas)
-        plt.plot(ss)
+        fig, ax1 = plt.subplots()
+        ax1.set_xlabel("Optimisation step")
+
+        colour = 'blue'
+        ax1.plot(thetas, label="orientation", color=colour)
+        ax1.set_ylabel("orientation (radians)", color=colour)
+        ax1.tick_params(axis='y', labelcolor=colour)
+
+        ax2 = ax1.twinx()
+        colour = 'green'
+        ax2.plot(ss, color=colour)
+        ax2.set_ylabel("-WZNCC", color=colour)
+        ax2.tick_params(axis='y', labelcolor=colour)
+
+        plt.title("Optimisation process")
+        plt.legend()
+        fig.tight_layout()
         plt.show()
 
 
