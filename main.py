@@ -13,8 +13,8 @@ from random_rays import RandomRays
 
 
 if __name__ == "__main__":
-    image_size: int = 20
-    volume_size: int = 10
+    image_size: int = 8
+    volume_size: int = 5
 
     # CT space is 2D, exists between (-1,-1) and (1,1)
     volume_data = torch.rand(volume_size, volume_size)
