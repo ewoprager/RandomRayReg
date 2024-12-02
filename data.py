@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Tuple
 import numpy as np
 import torch
 
@@ -53,15 +53,15 @@ class Image:
         self.data = data
         self.size = data.size()
 
-    def samples(self, positions: torch.Tensor, blur_sigma: Union[torch.Tensor, None]=None) -> torch.Tensor:
+    def samples(self, rays: torch.Tensor, blur_sigma: Union[torch.Tensor, None]=None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Interpolates samples from the stored image where the given rays intersect the y-axis.
-        :param positions: tensor of sample positions between -1 and 1
+        :param rays: tensor of rays
         :param blur_sigma: (optional) sigma with which to apply a Gaussian blur to the image before sampling
-        :return: tensor of samples for each ray
+        :return: tensor of samples for each ray, tensor of weight modifications for each ray
         """
-
         data = self.data if blur_sigma is None else tools.gaussian_blur1d(self.data, blur_sigma.item())
+        positions = ray.y_axis_intersections(rays)
         positions_transformed = .5 * (positions + 1.) * (torch.tensor(self.size, dtype=torch.float32) - 1.)
         i0s = torch.floor(positions_transformed.clone().detach()).type(torch.int64)
         fs = positions_transformed - i0s.type(torch.float32)
@@ -69,11 +69,18 @@ class Image:
         i0s = i0s + 1
         i1s = i0s + 1
         n = with_zero.size()[0]
-        i0s[i0s < 1] = 0
-        i0s[i0s >= n] = 0
-        i1s[i1s < 1] = 0
-        i1s[i1s >= n] = 0
-        return (1. - fs) * with_zero.gather(0, i0s) + fs * with_zero.gather(0, i1s)
+        i0s_out = torch.logical_or(i0s < 1, i0s >= n)
+        i1s_out = torch.logical_or(i1s < 1, i1s >= n)
+        i0s[i0s_out] = 0
+        i1s[i1s_out] = 0
+
+        # determining image-edge weight modifications
+        weights = (1. - fs) * torch.logical_not(i0s_out).type(torch.float32) + fs * torch.logical_not(i1s_out).type(torch.float32)
+
+        # sampling
+        ret = (1. - fs) * with_zero.gather(0, i0s) + fs * with_zero.gather(0, i1s)
+
+        return ret, weights
 
     def display(self, axes):
         axes.pcolormesh(self.data[None, :], cmap='gray')

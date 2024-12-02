@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 
 import data
 import tools
@@ -55,48 +56,53 @@ class Main:
         # plt.show()
 
     def plot_landscape(self):
-        m: int = 8
+        m: int = 3
         _, axes = plt.subplots()
         alpha = 1.
         ray_density = 1000.
-        blur_constant = 4.
-        # for j in range(m):
-
-        # alpha = 1. / np.sqrt(0.3 * pow(1.5, m - j - 1))
         ray_count = int(np.ceil(torch.norm(self.registration.source_position) * ray_density * np.sqrt(np.pi) / alpha))
         rays = RandomRays(self.registration, ray_count=ray_count)
+        blur_constant = 4.
+        # for j in range(m):
+        cmap = mpl.colormaps['viridis']
+
         thetas = np.linspace(-torch.pi, torch.pi, 200, dtype=np.float32)
-        ss = np.zeros_like(thetas)
-        ssn = 0.
-        ss_clipped = np.zeros_like(thetas)
-        ssn_clipped = 0.
-        for i in range(len(thetas)):
-            s, sn = rays.evaluate(torch.tensor([thetas[i]]),
-                                  alpha=torch.tensor([alpha]),
-                                  blur_constant=torch.tensor([blur_constant]))
-            ss[i] = s.item()
-            ssn += sn
+        for j in range(m):
+            alpha = 0.5 * 1.75**j
 
-            s_clipped, sn_clipped = rays.evaluate(torch.tensor([thetas[i]]),
-                                                  alpha=torch.tensor([alpha]),
-                                                  blur_constant=torch.tensor([blur_constant]),
-                                                  clip=True)
-            ss_clipped[i] = s_clipped.item()
-            ssn_clipped += sn_clipped
+            ss = np.zeros_like(thetas)
+            ssn = 0.
+            ss_clipped = np.zeros_like(thetas)
+            ssn_clipped = 0.
+            for i in range(len(thetas)):
+                s, sn = rays.evaluate(torch.tensor([thetas[i]]),
+                                      alpha=torch.tensor([alpha]),
+                                      blur_constant=torch.tensor([blur_constant]),
+                                      clip=False)
+                ss[i] = s.item()
+                ssn += sn
 
-        asn = ssn / float(len(thetas))
-        asn_clipped = ssn_clipped / float(len(thetas))
-        # r: float = float(j) / float(m - 1)
-        axes.plot(thetas, ss,
-                  label="alpha = {:.3f}, {} rays, av. sum n = {:.3f}, bc = {:.3f}".format(alpha, ray_count, asn,
-                                                                                          blur_constant))
+                s_clipped, sn_clipped = rays.evaluate(torch.tensor([thetas[i]]),
+                                                      alpha=torch.tensor([alpha]),
+                                                      blur_constant=torch.tensor([blur_constant]),
+                                                      clip=True)
+                ss_clipped[i] = s_clipped.item()
+                ssn_clipped += sn_clipped
 
-        axes.plot(thetas, ss_clipped, label="clipped, av. sum n = {:.3f}".format(asn_clipped))
+            asn = ssn / float(len(thetas))
+            asn_clipped = ssn_clipped / float(len(thetas))
+            colour = cmap(float(j) / float(m - 1))
+            axes.plot(thetas, ss,
+                      label="alpha = {:.3f}, {} rays, av. sum n = {:.3f}, bc = {:.3f}".format(alpha, ray_count, asn,
+                                                                                              blur_constant),
+                      color=colour, linestyle='-')
+
+            axes.plot(thetas, ss_clipped, label="clipped, av. sum n = {:.3f}".format(asn_clipped), color=colour, linestyle='--')
 
         axes.vlines(-self.registration.true_theta.item(), -1., axes.get_ylim()[1])
         # ray_density *= 2.
 
-        plt.legend()
+        # plt.legend()
         plt.title("Optimisation landscape")
         plt.xlabel("theta (radians)")
         plt.ylabel("-WZNCC")
@@ -115,7 +121,7 @@ class Main:
         thetas = []
         ss = []
         theta = torch.pi * (-1. + 2. * torch.rand(1))
-        optimiser = torch.optim.SGD([theta], lr=0.3, momentum=0.5)
+        optimiser = torch.optim.SGD([theta], lr=1.5, momentum=0.75)
         for i in range(50):
             def closure():
                 optimiser.zero_grad()
