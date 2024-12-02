@@ -3,14 +3,14 @@
 So far, the implementation is just for the analogous 1D/2D registration problem, of a 1D fixed X-ray image, and a 2D
 moving CT image.
 
-See [RandomRays.pdf](RandomRays.pdf) for a mathematical explanation.
+See [RandomRays.pdf](RandomRays.pdf) for a detailed motivation, derivation and explanation.
 
 
 ## Modules
 
 ### `tools`
 
-Some simply mathematical operations on images and vectors.
+Some simple mathematical operations on images and vectors.
 
 
 ### `ray`
