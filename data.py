@@ -3,6 +3,7 @@ import numpy as np
 import torch
 
 import tools
+import ray
 
 class Volume:
     """
@@ -52,19 +53,18 @@ class Image:
         self.data = data
         self.size = data.size()
 
-    def samples(self, rays: torch.Tensor, blur_sigma: Union[torch.Tensor, None]=None) -> torch.Tensor:
+    def samples(self, positions: torch.Tensor, blur_sigma: Union[torch.Tensor, None]=None) -> torch.Tensor:
         """
         Interpolates samples from the stored image where the given rays intersect the y-axis.
-        :param rays: tensor of rays
+        :param positions: tensor of sample positions between -1 and 1
         :param blur_sigma: (optional) sigma with which to apply a Gaussian blur to the image before sampling
         :return: tensor of samples for each ray
         """
 
         data = self.data if blur_sigma is None else tools.gaussian_blur1d(self.data, blur_sigma.item())
-        xs = rays[:, 1] - (rays[:, 0] / rays[:, 2]) * rays[:, 3]
-        xs_transformed = .5 * (xs + 1.) * (torch.tensor(self.size, dtype=torch.float32) - 1.)
-        i0s = torch.floor(xs_transformed.clone().detach()).type(torch.int64)
-        fs = xs_transformed - i0s.type(torch.float32)
+        positions_transformed = .5 * (positions + 1.) * (torch.tensor(self.size, dtype=torch.float32) - 1.)
+        i0s = torch.floor(positions_transformed.clone().detach()).type(torch.int64)
+        fs = positions_transformed - i0s.type(torch.float32)
         with_zero = torch.cat((torch.zeros(1), data))
         i0s = i0s + 1
         i1s = i0s + 1

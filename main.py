@@ -3,6 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 
 import data
+import tools
 from tools import fix_angle
 from registration import Registration
 from random_rays import RandomRays
@@ -29,7 +30,7 @@ class Main:
         # display drr target
         _, ax0 = plt.subplots()
         self.registration.image.display(ax0)
-        plt.title("DRR at true orientation = {:.3f} (simulated X-ray intensity)".format(self.registration.true_theta.item()))
+        plt.title("DRR at true orientation = {:.3f} (simulated X-ray intensity)".format(-self.registration.true_theta.item()))
         plt.show()
 
         # display volume
@@ -67,17 +68,31 @@ class Main:
         thetas = np.linspace(-torch.pi, torch.pi, 200, dtype=np.float32)
         ss = np.zeros_like(thetas)
         ssn = 0.
+        ss_clipped = np.zeros_like(thetas)
+        ssn_clipped = 0.
         for i in range(len(thetas)):
             s, sn = rays.evaluate(torch.tensor([thetas[i]]),
                                   alpha=torch.tensor([alpha]),
                                   blur_constant=torch.tensor([blur_constant]))
             ss[i] = s.item()
             ssn += sn
+
+            s_clipped, sn_clipped = rays.evaluate(torch.tensor([thetas[i]]),
+                                                  alpha=torch.tensor([alpha]),
+                                                  blur_constant=torch.tensor([blur_constant]),
+                                                  clip=True)
+            ss_clipped[i] = s_clipped.item()
+            ssn_clipped += sn_clipped
+
         asn = ssn / float(len(thetas))
+        asn_clipped = ssn_clipped / float(len(thetas))
         # r: float = float(j) / float(m - 1)
         axes.plot(thetas, ss,
                   label="alpha = {:.3f}, {} rays, av. sum n = {:.3f}, bc = {:.3f}".format(alpha, ray_count, asn,
                                                                                           blur_constant))
+
+        axes.plot(thetas, ss_clipped, label="clipped, av. sum n = {:.3f}".format(asn_clipped))
+
         axes.vlines(-self.registration.true_theta.item(), -1., axes.get_ylim()[1])
         # ray_density *= 2.
 
@@ -100,8 +115,8 @@ class Main:
         thetas = []
         ss = []
         theta = torch.pi * (-1. + 2. * torch.rand(1))
-        optimiser = torch.optim.ASGD([theta], lr=1.5)
-        for i in range(30):
+        optimiser = torch.optim.SGD([theta], lr=0.3, momentum=0.5)
+        for i in range(50):
             def closure():
                 optimiser.zero_grad()
                 thetas.append(fix_angle(theta).item())
@@ -112,7 +127,7 @@ class Main:
                 return s
 
             optimiser.step(closure)
-        print("Final theta:", theta)
+        print("Final theta:", tools.fix_angle(theta))
 
         _, axes = plt.subplots()
         self.registration.generate_drr(theta.clone().detach()).display(axes)

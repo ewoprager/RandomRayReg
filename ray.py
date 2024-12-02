@@ -1,3 +1,4 @@
+from typing import Tuple
 import torch
 
 import tools
@@ -15,7 +16,15 @@ def transform(rays: torch.Tensor, _theta: torch.Tensor) -> torch.Tensor:
     return torch.matmul(rays, t2)
 
 
-def scores(rays, source_position: torch.Tensor, alpha: torch.Tensor=torch.tensor([0.14])) -> torch.Tensor:
+def y_axis_intersections(rays: torch.Tensor) -> torch.Tensor:
+    """
+    :param rays: tensor rays
+    :return: Tensor of the x-positions at which the rays intersect the y-axis
+    """
+    return rays[:, 1] - (rays[:, 0] / rays[:, 2]) * rays[:, 3]
+
+
+def scores(rays, source_position: torch.Tensor, alpha: torch.Tensor=torch.tensor([0.14]), clip: bool=False) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Find the scores of the given rays.
 
@@ -28,10 +37,15 @@ def scores(rays, source_position: torch.Tensor, alpha: torch.Tensor=torch.tensor
     :param rays: tensor of rays
     :param source_position: position of simulated X-ray source
     :param alpha: drop-off coefficient for ray score `vs.` distance
-    :return: tensor of ray scores
+    :return: tensor of ray scores, tensor of y-axis intersection positions
     """
     scaled_signed_distances = ((rays[:, 0:2] - source_position) * tools.cross_vectors(rays[:, 2:4])).sum(dim=1) / alpha
-    return torch.exp(-scaled_signed_distances * scaled_signed_distances)
+    xs = y_axis_intersections(rays)
+    weights = torch.exp(- scaled_signed_distances * scaled_signed_distances)
+    if clip:
+        clipping = torch.logical_and(torch.greater(xs, -1.), torch.less(xs, 1.))
+        weights = clipping * weights
+    return weights, xs
 
 
 def generate_random(count: int) -> torch.Tensor:

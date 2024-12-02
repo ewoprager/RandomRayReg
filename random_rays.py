@@ -37,7 +37,7 @@ class RandomRays:
         transformed_rays = self.data if theta is None else ray.transform(self.data, theta)
         ray.plot(axes, transformed_rays, self.registration.image.samples(transformed_rays))
 
-    def evaluate(self, theta: torch.Tensor, alpha: torch.Tensor=torch.tensor([0.14]), blur_constant: torch.Tensor=torch.Tensor([1.])) -> (torch.Tensor, torch.Tensor):
+    def evaluate(self, theta: torch.Tensor, alpha: torch.Tensor=torch.tensor([0.14]), blur_constant: torch.Tensor=torch.Tensor([1.]), clip: bool=False) -> (torch.Tensor, torch.Tensor):
         """
         Find the approximation of the ZNCC between the fixed image and a DRR at the given transformation, theta, using
         the stored pre-integrated rays.
@@ -48,17 +48,17 @@ class RandomRays:
         """
         transformed_rays = ray.transform(self.data, theta)
         # scoring rays on distance from source
-        scores = ray.scores(transformed_rays, self.registration.source_position, alpha=alpha)
+        scores, y_axis_intersections = ray.scores(transformed_rays, self.registration.source_position, alpha=alpha, clip=clip)
         # sampling from blurred image for every ray
         normalised_alpha = alpha / torch.norm(self.registration.source_position)
         blur_sigma = blur_constant * normalised_alpha
-        samples = self.registration.image.samples(transformed_rays, blur_sigma=blur_sigma)
+        samples = self.registration.image.samples(y_axis_intersections, blur_sigma=blur_sigma)
         # calculating similarity between samples and intensities, weighted by scores
         negative_zncc = -tools.weighted_zero_normalised_cross_correlation(samples, self.intensities, scores)
         sum_n = scores.sum()
         return negative_zncc, sum_n
 
-    def evaluate_with_grad(self, theta: torch.Tensor, alpha: torch.Tensor=torch.tensor([0.14]), blur_constant: torch.Tensor=torch.Tensor([1.])) -> (torch.Tensor, torch.Tensor):
+    def evaluate_with_grad(self, theta: torch.Tensor, alpha: torch.Tensor=torch.tensor([0.14]), blur_constant: torch.Tensor=torch.Tensor([1.]), clip: bool=False) -> (torch.Tensor, torch.Tensor):
         """
         Find the approximation of the ZNCC between the fixed image and a DRR at the given transformation, theta, using
         the stored pre-integrated rays, with autograd enabled for use in directed search.
@@ -69,7 +69,7 @@ class RandomRays:
         """
         theta.grad = torch.zeros_like(theta)
         theta.requires_grad_(True)
-        negative_zncc, sum_n = self.evaluate(theta, alpha=alpha, blur_constant=blur_constant)
+        negative_zncc, sum_n = self.evaluate(theta, alpha=alpha, blur_constant=blur_constant, clip=clip)
         negative_zncc.backward(torch.ones_like(negative_zncc))
         theta.requires_grad_(False)
         return negative_zncc, sum_n
