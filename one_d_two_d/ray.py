@@ -1,7 +1,7 @@
-from typing import Tuple
 import torch
 
 import tools
+from transformation import Rotation1D as Transformation
 
 
 """
@@ -10,8 +10,8 @@ passes, and the final 2 values are a unit-length direction vector of the ray.
 """
 
 
-def transform(rays: torch.Tensor, _theta: torch.Tensor) -> torch.Tensor:
-    t = torch.cat((torch.cat((torch.cos(_theta), torch.sin(_theta)))[None, :], torch.cat((-torch.sin(_theta), torch.cos(_theta)))[None, :]))
+def transform(rays: torch.Tensor, theta: Transformation) -> torch.Tensor:
+    t = theta.get_matrix()
     t2 = torch.cat((torch.cat((t, torch.zeros_like(t))), torch.cat((torch.zeros_like(t), t))), dim=1)
     return torch.matmul(rays, t2)
 
@@ -39,7 +39,7 @@ def scores(rays, source_position: torch.Tensor, alpha: torch.Tensor=torch.tensor
     :param alpha: drop-off coefficient for ray score `vs.` distance
     :return: tensor of ray scores
     """
-    scaled_signed_distances = ((rays[:, 0:2] - source_position) * tools.cross_vectors(rays[:, 2:4])).sum(dim=1) / alpha
+    scaled_signed_distances = ((rays[:, 0:2] - source_position) * tools.cross_vectors2d(rays[:, 2:4])).sum(dim=1) / alpha
     return torch.exp(- scaled_signed_distances * scaled_signed_distances)
 
 
@@ -59,7 +59,7 @@ def generate_true_untransformed(count: int, source_position: torch.Tensor) -> to
 
 
 def plot(axes, rays: torch.Tensor, shades: torch.Tensor):
-    for i in range(rays.size()[0]):
+    for i in range(rays.size()[0].item()):
         r: float = shades[i].item()
         row = rays[i]
         axes.plot([-1.5, 1.5], [row[1] - row[3] * (row[0] + 1.5) / row[2], row[1] - row[3] * (row[0] - 1.5) / row[2]], color=(r, r, r))

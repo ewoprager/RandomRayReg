@@ -1,11 +1,11 @@
 import numpy as np
 import torch
 
-def rotate_vector(vector: torch.Tensor, angle: torch.Tensor) -> torch.Tensor:
+def rotate_vector2d(vector: torch.Tensor, angle: torch.Tensor) -> torch.Tensor:
     return torch.matmul(torch.tensor([[torch.cos(angle), -torch.sin(angle)], [torch.sin(angle), torch.cos(angle)]]), vector)
 
 
-def cross_vectors(vectors: torch.Tensor) -> torch.Tensor:
+def cross_vectors2d(vectors: torch.Tensor) -> torch.Tensor:
     return torch.cat((-vectors[:, 1, None], vectors[:, 0, None]), 1)
 
 

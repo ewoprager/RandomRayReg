@@ -5,9 +5,7 @@ import matplotlib as mpl
 
 import data
 import tools
-from tools import fix_angle
-from registration import Registration
-from random_rays import RandomRays
+from random_rays import RandomRays, Registration, Transformation
 
 
 class Main:
@@ -31,7 +29,7 @@ class Main:
         # display drr target
         _, ax0 = plt.subplots()
         self.registration.image.display(ax0)
-        plt.title("DRR at true orientation = {:.3f} (simulated X-ray intensity)".format(-self.registration.true_theta.item()))
+        plt.title("DRR at true orientation = {:.3f} (simulated X-ray intensity)".format(-self.registration.true_theta.value.item()))
         plt.show()
 
         # display volume
@@ -75,14 +73,14 @@ class Main:
             ss_clipped = np.zeros_like(thetas)
             ssn_clipped = 0.
             for i in range(len(thetas)):
-                s, sn = rays.evaluate(torch.tensor([thetas[i]]),
+                s, sn = rays.evaluate(Transformation(torch.tensor([thetas[i]])),
                                       alpha=torch.tensor([alpha]),
                                       blur_constant=torch.tensor([blur_constant]),
                                       clip=False)
                 ss[i] = s.item()
                 ssn += sn
 
-                s_clipped, sn_clipped = rays.evaluate(torch.tensor([thetas[i]]),
+                s_clipped, sn_clipped = rays.evaluate(Transformation(torch.tensor([thetas[i]])),
                                                       alpha=torch.tensor([alpha]),
                                                       blur_constant=torch.tensor([blur_constant]),
                                                       clip=True)
@@ -99,7 +97,7 @@ class Main:
 
             axes.plot(thetas, ss_clipped, label="clipped, av. sum n = {:.3f}".format(asn_clipped), color=colour, linestyle='--')
 
-        axes.vlines(-self.registration.true_theta.item(), -1., axes.get_ylim()[1])
+        axes.vlines(-self.registration.true_theta.value.item(), -1., axes.get_ylim()[1])
         # ray_density *= 2.
 
         # plt.legend()
@@ -109,7 +107,7 @@ class Main:
         plt.show()
 
     def optimise(self):
-        print("True theta:", -self.registration.true_theta)
+        print("True theta:", -self.registration.true_theta.value.item())
 
         alpha = 1.
         ray_density = 1000.
@@ -120,12 +118,13 @@ class Main:
 
         thetas = []
         ss = []
-        theta = torch.pi * (-1. + 2. * torch.rand(1))
-        optimiser = torch.optim.SGD([theta], lr=1.5, momentum=0.75)
+        theta = Transformation()
+        theta.randomise()
+        optimiser = torch.optim.SGD([theta.value], lr=1.5, momentum=0.75)
         for i in range(50):
             def closure():
                 optimiser.zero_grad()
-                thetas.append(fix_angle(theta).item())
+                thetas.append(tools.fix_angle(theta.value).item())
                 s, _ = rays.evaluate_with_grad(theta,
                                                alpha=torch.tensor([alpha]),
                                                blur_constant=torch.tensor([blur_constant]))
@@ -133,14 +132,14 @@ class Main:
                 return s
 
             optimiser.step(closure)
-        print("Final theta:", tools.fix_angle(theta))
+        print("Final theta:", tools.fix_angle(theta.value))
 
         _, axes = plt.subplots()
-        self.registration.generate_drr(theta.clone().detach()).display(axes)
-        plt.title("DRR at final orientation = {:.3f} (simulated X-ray intensity)".format(theta.item()))
+        self.registration.generate_drr(theta).display(axes)
+        plt.title("DRR at final orientation = {:.3f} (simulated X-ray intensity)".format(theta.value.item()))
         plt.show()
 
-        error = fix_angle(theta + self.registration.true_theta)
+        error = tools.fix_angle(theta.value + self.registration.true_theta.value)
         print("Distance: ", torch.abs(error).item())
 
         fig, ax1 = plt.subplots()

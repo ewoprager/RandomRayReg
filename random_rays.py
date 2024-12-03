@@ -1,8 +1,7 @@
 import torch
 
-import ray
 import tools
-from registration import Registration
+from registration import ray, Registration, Transformation
 
 
 class RandomRays:
@@ -35,9 +34,9 @@ class RandomRays:
         :param theta: (optional) transformation to apply to the rays before plotting
         """
         transformed_rays = self.data if theta is None else ray.transform(self.data, theta)
-        ray.plot(axes, transformed_rays, self.registration.image.samples(transformed_rays))
+        ray.plot(axes, transformed_rays, self.registration.image.samples(transformed_rays)[0])
 
-    def evaluate(self, theta: torch.Tensor, alpha: torch.Tensor=torch.tensor([0.14]), blur_constant: torch.Tensor=torch.Tensor([1.]), clip: bool=True) -> (torch.Tensor, torch.Tensor):
+    def evaluate(self, theta: Transformation, alpha: torch.Tensor=torch.tensor([0.14]), blur_constant: torch.Tensor=torch.Tensor([1.]), clip: bool=True) -> (torch.Tensor, torch.Tensor):
         """
         Find the approximation of the ZNCC between the fixed image and a DRR at the given transformation, theta, using
         the stored pre-integrated rays.
@@ -61,19 +60,19 @@ class RandomRays:
         sum_n = scores.sum()
         return negative_zncc, sum_n
 
-    def evaluate_with_grad(self, theta: torch.Tensor, alpha: torch.Tensor=torch.tensor([0.14]), blur_constant: torch.Tensor=torch.Tensor([1.]), clip: bool=True) -> (torch.Tensor, torch.Tensor):
+    def evaluate_with_grad(self, theta: Transformation, alpha: torch.Tensor=torch.tensor([0.14]), blur_constant: torch.Tensor=torch.Tensor([1.]), clip: bool=True) -> (torch.Tensor, torch.Tensor):
         """
         Find the approximation of the ZNCC between the fixed image and a DRR at the given transformation, theta, using
         the stored pre-integrated rays, with autograd enabled for use in directed search.
         :param theta: Transformation to apply to the rays before evaluation
         :param alpha: Distance drop-off coefficient used for calculating ray weights
         :param blur_constant: Coefficient for transforming alpha into the sigma used to blur the fixed image
+        :param clip: whether to modify ray weights that don't intersect the X-ray detector array
         :return: (the ZNCC of the calculated intensity pairs, the sum of all pair weights)
         """
-        theta.grad = torch.zeros_like(theta)
-        theta.requires_grad_(True)
+        theta.enable_grad()
         negative_zncc, sum_n = self.evaluate(theta, alpha=alpha, blur_constant=blur_constant, clip=clip)
         negative_zncc.backward(torch.ones_like(negative_zncc))
-        theta.requires_grad_(False)
+        theta.disable_grad()
         return negative_zncc, sum_n
 

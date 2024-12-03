@@ -29,7 +29,7 @@ class Volume:
                  volume. This is calculated as `1 - exp(-alpha * sum)` where `sum` is the approximate average value
                  along rays in the CT volume.
         """
-        perps = tools.cross_vectors(rays[:, 2:4])
+        perps = tools.cross_vectors2d(rays[:, 2:4])
         offsets = (rays[:, 0:2] * perps).sum(dim=1)[:, None]
         ps = -np.sqrt(2.) * rays[:, 2:4] + offsets * perps
         deltas = (2. * np.sqrt(2.) / float(n)) * rays[:, 2:4]

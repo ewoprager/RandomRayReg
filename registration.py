@@ -1,8 +1,8 @@
 import torch
 
-import ray
-import data
-
+import one_d_two_d.ray as ray
+import one_d_two_d.data as data
+from one_d_two_d.ray import Transformation
 
 class Registration:
     """
@@ -11,15 +11,16 @@ class Registration:
     def __init__(self,
                  volume: data.Volume,
                  image_size: int,
-                 source_position: torch.Tensor=torch.tensor([5., 0.])):
+                 source_position: torch.Tensor):
         self.volume = volume
         self.image_size = image_size
         self.source_position = source_position
 
-        self.true_theta = torch.pi * (-1. + 2. * torch.rand(1))
-        self.image = self.generate_drr(self.true_theta)
+        self.true_theta: Transformation = Transformation()
+        self.true_theta.randomise()
+        self.image: data.Image = self.generate_drr(self.true_theta)
 
-    def generate_drr(self, theta: torch.Tensor) -> data.Image:
+    def generate_drr(self, theta: Transformation) -> data.Image:
         """
         :param theta: Transformation of the DRR
         :return: A DRR through the stored CT volume at the given transformation, `theta`.
