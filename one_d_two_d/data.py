@@ -3,7 +3,7 @@ import numpy as np
 import torch
 
 import tools
-import ray
+from one_d_two_d.ray import Ray
 
 class Volume:
     """
@@ -18,7 +18,7 @@ class Volume:
         :param positions: a vector of 2D vectors, positions between (-1,-1) and (1,1)
         :return: vector of bi-linearly interpolated samples from the stored image at the given positions
         """
-        return torch.nn.functional.grid_sample(self.data[None, None, :, :], positions[None, None, :, :], align_corners=False)
+        return torch.nn.functional.grid_sample(self.data[None, None, :, :], positions[None, None, :, :], align_corners=False)[0, 0, 0]
 
     def integrate(self, rays: torch.Tensor, n: int=200, alpha: float=0.5) -> torch.Tensor:
         """
@@ -29,19 +29,19 @@ class Volume:
                  volume. This is calculated as `1 - exp(-alpha * sum)` where `sum` is the approximate average value
                  along rays in the CT volume.
         """
-        perps = tools.cross_vectors2d(rays[:, 2:4])
-        offsets = (rays[:, 0:2] * perps).sum(dim=1)[:, None]
-        ps = -np.sqrt(2.) * rays[:, 2:4] + offsets * perps
+        perpendiculars = tools.cross_vectors2d(rays[:, 2:4])
+        offsets = (rays[:, 0:2] * perpendiculars).sum(dim=1)[:, None]
+        ps = -np.sqrt(2.) * rays[:, 2:4] + offsets * perpendiculars
         deltas = (2. * np.sqrt(2.) / float(n)) * rays[:, 2:4]
         ret = torch.zeros(rays.size()[0])
         for i in range(n):
-            ret += self.samples(ps)[0, 0, 0]
+            ret += self.samples(ps)
             ps += deltas
         return 1. - torch.exp(-ret / (alpha * float(n)))
 
     def display(self, axes):
-        X, Y = np.meshgrid(np.linspace(-1., 1., self.size[0], endpoint=True), np.linspace(-1., 1., self.size[1], endpoint=True))
-        axes.pcolormesh(X, Y, self.data, cmap='gray')
+        xs, ys = np.meshgrid(np.linspace(-1., 1., self.size[0], endpoint=True), np.linspace(-1., 1., self.size[1], endpoint=True))
+        axes.pcolormesh(xs, ys, self.data, cmap='gray')
 
 
 class Image:
@@ -61,7 +61,7 @@ class Image:
         :return: tensor of samples for each ray, tensor of weight modifications for each ray
         """
         data = self.data if blur_sigma is None else tools.gaussian_blur1d(self.data, blur_sigma.item())
-        positions = ray.y_axis_intersections(rays)
+        positions = Ray.y_axis_intersections(rays)
         positions_transformed = .5 * (positions + 1.) * (torch.tensor(self.size, dtype=torch.float32) - 1.)
         i0s = torch.floor(positions_transformed.clone().detach()).type(torch.int64)
         fs = positions_transformed - i0s.type(torch.float32)

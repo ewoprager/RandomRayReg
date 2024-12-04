@@ -71,3 +71,13 @@ in the same local minimum as the global minimum. A DRR taken at this orientation
 The WZNCC and orientation developed as follows over the course of the optimisation:
 
 ![optimisation.png](plots/optimisation.png)
+
+
+# Setup
+
+Developed with `Python 3.10.14`.
+
+Install requirements with
+```bash
+pip install -r requirements.txt
+```

@@ -1,43 +1,38 @@
+import sys
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import nrrd
 
-from one_d_two_d.data import Ray, Volume, Image
+from two_d_three_d.data import Ray, Volume, Image
 import tools
 from random_rays import RandomRays, Registration
 
 
 class Main:
-    def __init__(self, image_size: int, volume_size: int):
+    def __init__(self, image_size: torch.Tensor, volume_data: torch.Tensor, drr_alpha: float=.5):
         self.image_size = image_size
-        self.volume_size = volume_size
+        self.volume_data = volume_data
+        # self.volume_size = volume_size
 
         # CT space is 2D, exists between (-1,-1) and (1,1)
-        self.volume_data = torch.rand(volume_size, volume_size)
-        radius = 0.5 * float(volume_size - 1)
-        for i in range(self.volume_size):
-            for j in range(self.volume_size):
-                di = float(i) - radius
-                dj = float(j) - radius
-                if di * di + dj * dj > radius * radius:
-                    self.volume_data[i, j] = 0.
         self.volume = Volume(self.volume_data)
 
-        self.registration = Registration(Ray, Image, self.volume, image_size, source_position=torch.tensor([3., 0.]))
+        self.registration = Registration(Ray, Image, self.volume, image_size, source_position=torch.tensor([0., 0., 11.]), drr_alpha=drr_alpha)
 
         # display drr target
         _, ax0 = plt.subplots()
         self.registration.image.display(ax0)
-        plt.title("DRR at true orientation = {:.3f} (simulated X-ray intensity)".format(-self.registration.true_theta.value.item()))
+        plt.title("DRR at true orientation = {:.3f} (simulated X-ray intensity)".format(self.registration.true_theta))
         plt.show()
 
         # display volume
-        _, ax1 = plt.subplots()
-        self.registration.volume.display(ax1)
-        ax1.set_ylim(-1., 1.)
-        plt.title("CT volume (X-ray attenuation coefficient)")
-        plt.show()
+        # _, ax1 = plt.subplots()
+        # self.registration.volume.display(ax1)
+        # ax1.set_ylim(-1., 1.)
+        # plt.title("CT volume (X-ray attenuation coefficient)")
+        # plt.show()
 
         # display volume, with rays colours according to fixed image brightness
         # _, ax1 = plt.subplots()
@@ -164,7 +159,25 @@ class Main:
 
 
 if __name__ == "__main__":
-    main = Main(image_size=16, volume_size=8)
+    if len(sys.argv) != 2:
+        print("Please pass a single argument: a path to a CT volume file.")
+        exit(1)
+
+    ct_path = sys.argv[1]
+
+    data, header = nrrd.read(ct_path)
+
+    print(header)
+
+    volume_data = torch.maximum(torch.tensor(data).type(torch.float32) + 1000., torch.tensor([0.]))
+
+    print(volume_data)
+
+    print(volume_data.size())
+
+    main = Main(image_size=torch.tensor([1000, 1000]), volume_data=volume_data, drr_alpha=2000.)
+
+    exit()
 
     main.plot_landscape()
 

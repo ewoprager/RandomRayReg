@@ -1,30 +1,32 @@
 import torch
-
-import one_d_two_d.ray as ray
-import one_d_two_d.data as data
-from one_d_two_d.ray import Transformation
+from typing import TypeAlias
 
 class Registration:
     """
-    A 1D/2D radiographic image registration task.
+    A 1D/2D or 2D/3D radiographic image registration task.
     """
     def __init__(self,
-                 volume: data.Volume,
-                 image_size: int,
-                 source_position: torch.Tensor):
+                 ray_type: TypeAlias,
+                 image_type: TypeAlias,
+                 volume,
+                 image_size: torch.Tensor,
+                 source_position: torch.Tensor,
+                 drr_alpha: float=.5):
+        self.ray_type = ray_type
+        self.image_type = image_type
         self.volume = volume
         self.image_size = image_size
         self.source_position = source_position
 
-        self.true_theta: Transformation = Transformation()
+        self.true_theta = self.ray_type.Transformation()
         self.true_theta.randomise()
-        self.image: data.Image = self.generate_drr(self.true_theta)
+        self.image = self.generate_drr(self.true_theta, alpha=drr_alpha)
 
-    def generate_drr(self, theta: Transformation) -> data.Image:
+    def generate_drr(self, theta, alpha: float=.5):
         """
-        :param theta: Transformation of the DRR
+        :param theta: Transformation of the DRR, of type `self.ray.Transformation`
         :return: A DRR through the stored CT volume at the given transformation, `theta`.
         """
-        drr_rays = ray.transform(ray.generate_true_untransformed(self.image_size, self.source_position), theta)
-        drr_data = self.volume.integrate(drr_rays)
-        return data.Image(drr_data)
+        drr_rays = self.ray_type.transform(self.ray_type.generate_true_untransformed(self.image_size, self.source_position), theta)
+        drr_data = self.volume.integrate(drr_rays, alpha=alpha)
+        return self.image_type(drr_data.reshape(tuple(self.image_size)))
