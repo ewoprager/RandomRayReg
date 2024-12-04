@@ -1,5 +1,6 @@
 from typing import Union, Tuple, TypeAlias
 import torch
+from torch.xpu import device
 
 import tools
 from transformation import SE3 as Transformation
@@ -14,10 +15,10 @@ class Ray:
 
     @staticmethod
     def transform(rays: torch.Tensor, theta: Transformation) -> torch.Tensor:
-        t = theta.get_matrix()
+        t = theta.get_matrix().to(rays.device)
         t2 = torch.cat((torch.cat((t, torch.zeros_like(t))), torch.cat((torch.zeros_like(t), t))), dim=1)
         ray_count = rays.size()[0]
-        rays_homogeneous = torch.cat((rays[:, 0:3], torch.ones(ray_count)[:, None], rays[:, 3:6], torch.zeros(ray_count)[:, None]), dim=1)
+        rays_homogeneous = torch.cat((rays[:, 0:3], torch.ones(ray_count, device=rays.device)[:, None], rays[:, 3:6], torch.zeros(ray_count, device=rays.device)[:, None]), dim=1)
         ret_homogeneous = torch.matmul(rays_homogeneous, t2)
         return ret_homogeneous[:, torch.tensor([0, 1, 2, 4, 5, 6])]
 
@@ -70,7 +71,7 @@ class Ray:
         :return: tensor of ray scores
         """
         origin_offsets = rays[:, 0:3] - source_position
-        scaled_distances = torch.norm(origin_offsets - torch.dot(origin_offsets, rays[:, 3:6]) * rays[:, 3:6], dim=1) / alpha
+        scaled_distances = torch.norm(origin_offsets - (origin_offsets * rays[:, 3:6]).sum(dim=-1)[:, None] * rays[:, 3:6], dim=1) / alpha
         return torch.exp(- scaled_distances * scaled_distances)
 
     @staticmethod
@@ -79,16 +80,17 @@ class Ray:
         return torch.cat((rands[:, 0:3], torch.nn.functional.normalize(rands[:, 3:6], dim=1)), dim=1)
 
     @staticmethod
-    def generate_true_untransformed(size: torch.Tensor, source_position: torch.Tensor) -> torch.Tensor:
+    def generate_true_untransformed(device, size: torch.Tensor, source_position: torch.Tensor) -> torch.Tensor:
         """
         :param size: 2D image size
         :param source_position: position of simulated X-ray source
         :return: tensor of rays that would correspond to a `width` x `height` pixel DRR sitting on the x-y plane
         """
-        y_values, x_values = torch.meshgrid(torch.linspace(-1., 1., size[0].item()), torch.linspace(-1., 1., size[1].item()))
+        source_position_device = source_position.to(device)
+        y_values, x_values = torch.meshgrid(torch.linspace(-1., 1., size[0].item(), device=device), torch.linspace(-1., 1., size[1].item(), device=device))
         plane_intersections = torch.cat((y_values.flatten()[:, None], x_values.flatten()[:, None]), dim=1)
         count = (size[0] * size[1]).item()
-        return torch.cat((source_position.repeat((count, 1)), torch.nn.functional.normalize(torch.cat((plane_intersections, torch.zeros(count, 1)), dim=1) - source_position, dim=1)), dim=1)
+        return torch.cat((source_position_device.repeat((count, 1)), torch.nn.functional.normalize(torch.cat((plane_intersections, torch.zeros(count, 1, device=device)), dim=1) - source_position_device, dim=1)), dim=1)
 
 
     # def plot(axes, rays: torch.Tensor, shades: torch.Tensor):

@@ -24,7 +24,7 @@ class Main:
                     self.volume_data[i, j] = 0.
         self.volume = Volume(self.volume_data)
 
-        self.registration = Registration(Ray, Image, self.volume, image_size, source_position=torch.tensor([3., 0.]))
+        self.registration = Registration(Ray, Image, self.volume, torch.tensor([image_size]), source_position=torch.tensor([3., 0.]))
 
         # display drr target
         _, ax0 = plt.subplots()

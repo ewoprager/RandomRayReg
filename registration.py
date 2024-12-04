@@ -27,6 +27,10 @@ class Registration:
         :param theta: Transformation of the DRR, of type `self.ray.Transformation`
         :return: A DRR through the stored CT volume at the given transformation, `theta`.
         """
-        drr_rays = self.ray_type.transform(self.ray_type.generate_true_untransformed(self.image_size, self.source_position), theta)
+        drr_rays = self.ray_type.transform(self.ray_type.generate_true_untransformed(self.volume.data.device, self.image_size, self.source_position), theta)
         drr_data = self.volume.integrate(drr_rays, alpha=alpha)
+        drr_data[drr_data.isnan()] = 0.
         return self.image_type(drr_data.reshape(tuple(self.image_size)))
+
+    def save(self, cache_directory: str):
+        self.image.save(cache_directory + "/image.pt")

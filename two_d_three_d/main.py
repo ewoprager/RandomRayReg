@@ -4,6 +4,7 @@ import torch
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import nrrd
+import gc
 
 from two_d_three_d.data import Ray, Volume, Image
 import tools
@@ -11,7 +12,10 @@ from random_rays import RandomRays, Registration
 
 
 class Main:
-    def __init__(self, image_size: torch.Tensor, volume_data: torch.Tensor, drr_alpha: float=.5):
+    def __init__(self,
+                 image_size: torch.Tensor,
+                 volume_data: torch.Tensor,
+                 drr_alpha: float=.5):
         self.image_size = image_size
         self.volume_data = volume_data
         # self.volume_size = volume_size
@@ -49,50 +53,62 @@ class Main:
         # plt.show()
 
     def plot_landscape(self):
-        m: int = 3
+        m: int = 5
         _, axes = plt.subplots()
         alpha = 1.
-        ray_density = 1000.
-        ray_count = int(np.ceil(torch.norm(self.registration.source_position) * ray_density * np.sqrt(np.pi) / alpha))
-        rays = RandomRays(self.registration, ray_count=ray_count)
+        # ray_density = 500.
+        # ray_count = int(np.ceil(4. * (torch.norm(self.registration.source_position) / alpha).square() * ray_density))
+        max_ray_count = 3000
+        rays = RandomRays(self.registration, ray_count=max_ray_count)
+        rays.save("two_d_three_d/cache")
+
+        ray_count = max_ray_count
+
         blur_constant = 4.
-        # for j in range(m):
+
         cmap = mpl.colormaps['viridis']
 
-        thetas = np.linspace(-torch.pi, torch.pi, 200, dtype=np.float32)
+        theta_count = 200
+        thetas = torch.cat((self.registration.true_theta.value[0:5].repeat(theta_count, 1), torch.linspace(-torch.pi, torch.pi, theta_count)[:, None]), dim=1)
         for j in range(m):
-            alpha = 0.5 * 1.75**j
+            # alpha = .4 * 2.**j
 
-            ss = np.zeros_like(thetas)
+            ss = torch.zeros(theta_count)
             ssn = 0.
-            ss_clipped = np.zeros_like(thetas)
-            ssn_clipped = 0.
-            for i in range(len(thetas)):
-                s, sn = rays.evaluate(Ray.Transformation(torch.tensor([thetas[i]])),
+            # ss_clipped = ss.clone()
+            # ssn_clipped = 0.
+            for i in range(theta_count):
+                s, sn = rays.evaluate(Ray.Transformation(thetas[i]),
                                       alpha=torch.tensor([alpha]),
                                       blur_constant=torch.tensor([blur_constant]),
-                                      clip=False)
+                                      clip=False,
+                                      ray_count=ray_count)
+                # print(s, sn)
                 ss[i] = s.item()
                 ssn += sn
 
-                s_clipped, sn_clipped = rays.evaluate(Ray.Transformation(torch.tensor([thetas[i]])),
-                                                      alpha=torch.tensor([alpha]),
-                                                      blur_constant=torch.tensor([blur_constant]),
-                                                      clip=True)
-                ss_clipped[i] = s_clipped.item()
-                ssn_clipped += sn_clipped
+                # s_clipped, sn_clipped = rays.evaluate(Ray.Transformation(thetas[i]),
+                #                                       alpha=torch.tensor([alpha]),
+                #                                       blur_constant=torch.tensor([blur_constant]),
+                #                                       clip=True)
+                # ss_clipped[i] = s_clipped.item()
+                # ssn_clipped += sn_clipped
 
-            asn = ssn / float(len(thetas))
-            asn_clipped = ssn_clipped / float(len(thetas))
+                gc.collect()
+
+                ray_count = (2 * ray_count) // 3
+
+            asn = ssn / float(theta_count)
+            # asn_clipped = ssn_clipped / float(thetas.size()[0])
             colour = cmap(float(j) / float(m - 1))
-            axes.plot(thetas, ss,
+            axes.plot(thetas[:, 5], ss,
                       label="alpha = {:.3f}, {} rays, av. sum n = {:.3f}, bc = {:.3f}".format(alpha, ray_count, asn,
                                                                                               blur_constant),
                       color=colour, linestyle='-')
 
-            axes.plot(thetas, ss_clipped, label="clipped, av. sum n = {:.3f}".format(asn_clipped), color=colour, linestyle='--')
+            # axes.plot(thetas, ss_clipped, label="clipped, av. sum n = {:.3f}".format(asn_clipped), color=colour, linestyle='--')
 
-        axes.vlines(-self.registration.true_theta.value.item(), -1., axes.get_ylim()[1])
+        axes.vlines(-self.registration.true_theta.value[5].item(), -1., axes.get_ylim()[1])
         # ray_density *= 2.
 
         # plt.legend()
@@ -105,7 +121,7 @@ class Main:
         print("True theta:", -self.registration.true_theta.value.item())
 
         alpha = 1.
-        ray_density = 1000.
+        ray_density = 100.
         blur_constant = 4.
 
         ray_count = int(np.ceil(torch.norm(self.registration.source_position) * ray_density * np.sqrt(np.pi) / alpha))
@@ -159,6 +175,8 @@ class Main:
 
 
 if __name__ == "__main__":
+    sys.settrace(None)
+
     if len(sys.argv) != 2:
         print("Please pass a single argument: a path to a CT volume file.")
         exit(1)
@@ -167,18 +185,15 @@ if __name__ == "__main__":
 
     data, header = nrrd.read(ct_path)
 
-    print(header)
+    # device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    device = torch.device('cpu')
 
-    volume_data = torch.maximum(torch.tensor(data).type(torch.float32) + 1000., torch.tensor([0.]))
+    volume_data = torch.maximum(torch.tensor(data, device=device).type(torch.float32) + 1000., torch.tensor([0.], device=device))
 
-    print(volume_data)
-
-    print(volume_data.size())
-
-    main = Main(image_size=torch.tensor([1000, 1000]), volume_data=volume_data, drr_alpha=2000.)
-
-    exit()
+    main = Main(image_size=torch.tensor([100, 100]), volume_data=volume_data, drr_alpha=2000.)
 
     main.plot_landscape()
+
+    exit()
 
     main.optimise()

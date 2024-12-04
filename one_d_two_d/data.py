@@ -62,25 +62,8 @@ class Image:
         """
         data = self.data if blur_sigma is None else tools.gaussian_blur1d(self.data, blur_sigma.item())
         positions = Ray.y_axis_intersections(rays)
-        positions_transformed = .5 * (positions + 1.) * (torch.tensor(self.size, dtype=torch.float32) - 1.)
-        i0s = torch.floor(positions_transformed.clone().detach()).type(torch.int64)
-        fs = positions_transformed - i0s.type(torch.float32)
-        with_zero = torch.cat((torch.zeros(1), data))
-        i0s = i0s + 1
-        i1s = i0s + 1
-        n = with_zero.size()[0]
-        i0s_out = torch.logical_or(i0s < 1, i0s >= n)
-        i1s_out = torch.logical_or(i1s < 1, i1s >= n)
-        i0s[i0s_out] = 0
-        i1s[i1s_out] = 0
 
-        # determining image-edge weight modifications
-        weights = (1. - fs) * torch.logical_not(i0s_out).type(torch.float32) + fs * torch.logical_not(i1s_out).type(torch.float32)
-
-        # sampling
-        ret = (1. - fs) * with_zero.gather(0, i0s) + fs * with_zero.gather(0, i1s)
-
-        return ret, weights
+        return tools.grid_sample1d(data, positions)
 
     def display(self, axes):
         axes.pcolormesh(self.data[None, :], cmap='gray')

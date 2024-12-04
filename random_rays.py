@@ -1,5 +1,5 @@
 import torch
-from typing import TypeAlias
+from typing import Union, TypeAlias
 
 import tools
 from registration import Registration
@@ -40,7 +40,12 @@ class RandomRays:
         transformed_rays = self.data if theta is None else self.ray_type.transform(self.data, theta)
         self.ray_type.plot(axes, transformed_rays, self.registration.image.samples(transformed_rays)[0])
 
-    def evaluate(self, theta, alpha: torch.Tensor=torch.tensor([0.14]), blur_constant: torch.Tensor=torch.Tensor([1.]), clip: bool=True) -> (torch.Tensor, torch.Tensor):
+    def evaluate(self,
+                 theta,
+                 alpha: torch.Tensor=torch.tensor([0.14]),
+                 blur_constant: torch.Tensor=torch.Tensor([1.]),
+                 clip: bool=True,
+                 ray_count: Union[int, None]=None) -> (torch.Tensor, torch.Tensor):
         """
         Find the approximation of the ZNCC between the fixed image and a DRR at the given transformation, theta, using
         the stored pre-integrated rays.
@@ -48,9 +53,10 @@ class RandomRays:
         :param alpha: Distance drop-off coefficient used for calculating ray weights
         :param blur_constant: Coefficient for transforming alpha into the sigma used to blur the fixed image
         :param clip: whether to modify ray weights that don't intersect the X-ray detector array
+        :param ray_count: (optional) number of rays to use in calculation, if not all of them
         :return: (the ZNCC of the calculated intensity pairs, the sum of all pair weights)
         """
-        transformed_rays = self.ray_type.transform(self.data, theta)
+        transformed_rays = self.ray_type.transform(self.data if ray_count is None else self.data[0:ray_count], theta)
         # sampling from blurred image for every ray
         normalised_alpha = alpha / torch.norm(self.registration.source_position)
         blur_sigma = blur_constant * normalised_alpha
@@ -60,11 +66,16 @@ class RandomRays:
         if clip:
             scores = scores * weight_modifications
         # calculating similarity between samples and intensities, weighted by scores
-        negative_zncc = -tools.weighted_zero_normalised_cross_correlation(samples, self.intensities, scores)
+        negative_zncc = -tools.weighted_zero_normalised_cross_correlation(samples, self.intensities if ray_count is None else self.intensities[0:ray_count], scores)
         sum_n = scores.sum()
         return negative_zncc, sum_n
 
-    def evaluate_with_grad(self, theta, alpha: torch.Tensor=torch.tensor([0.14]), blur_constant: torch.Tensor=torch.Tensor([1.]), clip: bool=True) -> (torch.Tensor, torch.Tensor):
+    def evaluate_with_grad(self,
+                           theta,
+                           alpha: torch.Tensor=torch.tensor([0.14]),
+                           blur_constant: torch.Tensor=torch.Tensor([1.]),
+                           clip: bool=True,
+                           ray_count: Union[int, None]=None) -> (torch.Tensor, torch.Tensor):
         """
         Find the approximation of the ZNCC between the fixed image and a DRR at the given transformation, theta, using
         the stored pre-integrated rays, with autograd enabled for use in directed search.
@@ -72,11 +83,17 @@ class RandomRays:
         :param alpha: Distance drop-off coefficient used for calculating ray weights
         :param blur_constant: Coefficient for transforming alpha into the sigma used to blur the fixed image
         :param clip: whether to modify ray weights that don't intersect the X-ray detector array
+        :param ray_count: (optional) number of rays to use in calculation, if not all of them
         :return: (the ZNCC of the calculated intensity pairs, the sum of all pair weights)
         """
         theta.enable_grad()
-        negative_zncc, sum_n = self.evaluate(theta, alpha=alpha, blur_constant=blur_constant, clip=clip)
+        negative_zncc, sum_n = self.evaluate(theta, alpha=alpha, blur_constant=blur_constant, clip=clip, ray_count=ray_count)
         negative_zncc.backward(torch.ones_like(negative_zncc))
         theta.disable_grad()
         return negative_zncc, sum_n
+
+    def save(self, cache_directory: str):
+        torch.save(self.data, cache_directory + "/rays.pt")
+        torch.save(self.intensities, cache_directory + "/intensities.pt")
+        self.registration.save(cache_directory)
 

@@ -2,7 +2,9 @@ from typing import Union, Tuple
 import numpy as np
 import torch
 import kornia
+import time
 
+import tools
 from two_d_three_d.ray import Ray
 
 class Volume:
@@ -18,7 +20,12 @@ class Volume:
         :param positions: a vector of 3D vectors, positions between (-1,-1) and (1,1)
         :return: vector of bi-linearly interpolated samples from the stored image at the given positions
         """
-        return torch.nn.functional.grid_sample(self.data[None, None, :, :, :], positions[None, None, None, :, :], align_corners=False)[0, 0, 0, 0]
+
+        # return tools.grid_sample3d(self.data, positions)
+
+        # data_cpu = self.data[None, None, :, :, :].cpu()
+        # positions_cpu = positions[None, None, None, :, :].cpu()
+        return torch.nn.functional.grid_sample(self.data[None, None, :, :, :], positions[None, None, None, :, :], align_corners=False)[0, 0, 0, 0].to(self.data.device)
 
     def integrate(self, rays: torch.Tensor, n: int=500, alpha: float=.5) -> torch.Tensor:
         """
@@ -29,6 +36,10 @@ class Volume:
                  volume. This is calculated as `1 - exp(-alpha * sum)` where `sum` is the approximate average value
                  along rays in the CT volume.
         """
+        print("Integrating {} rays".format(rays.size()[0]))
+        print("Pre-processing...")
+        tic = time.time()
+
         inters_x0, ls_x0 = Ray.yz_plane_intersections(rays, -1.)
         inters_x1, ls_x1 = Ray.yz_plane_intersections(rays, 1.)
         inters_y0, ls_y0 = Ray.xz_plane_intersections(rays, -1.)
@@ -44,10 +55,16 @@ class Volume:
         deltas = ((end_lambdas - start_lambdas) / float(n))[:, None] * rays[:, 3:6]
 
         ps = rays[:, 0:3] + start_lambdas[:, None] * rays[:, 3:6]
-        ret = torch.zeros(rays.size()[0])
+        ret = torch.zeros(rays.size()[0], device=self.data.device)
+        toc = time.time()
+        print("Done. Took {:.3f}s".format(toc - tic))
+        print("Looping...")
+        tic = time.time()
         for i in range(n):
             ret += self.samples(ps)
             ps += deltas
+        toc = time.time()
+        print("Done. Took {:.3f}s".format(toc - tic))
         return 1. - torch.exp(-ret / (alpha * float(n)))
 
     # def display(self, axes):
@@ -59,8 +76,7 @@ class Image:
     """
     A 2D image that can be sampled using rays
     """
-    def __init__(self,
-                 data: torch.Tensor):
+    def __init__(self, data: torch.Tensor):
         self.data = data
         self.size = data.size()
 
@@ -71,7 +87,7 @@ class Image:
         :param blur_sigma: (optional) sigma with which to apply a Gaussian blur to the image before sampling
         :return: tensor of samples for each ray, tensor of weight modifications for each ray
         """
-        data = self.data if blur_sigma is None else kornia.filters.gaussian_blur2d(self.data[None, None, :, :], 1 + 2 * int(np.ceil(2. * blur_sigma.item())), blur_sigma.repeat(2))[0, 0]
+        data = self.data if blur_sigma is None else kornia.filters.gaussian_blur2d(self.data[None, None, :, :], 1 + 2 * int(np.ceil(2. * blur_sigma.item())), blur_sigma.repeat(1, 2))[0, 0]
         positions, _ = Ray.xy_plane_intersections(rays)
 
         # sampling
@@ -84,4 +100,7 @@ class Image:
 
     def display(self, axes):
         xs, ys = np.meshgrid(np.linspace(-1., 1., self.size[0], endpoint=True), np.linspace(-1., 1., self.size[1], endpoint=True))
-        axes.pcolormesh(xs, ys, self.data, cmap='gray')
+        axes.pcolormesh(xs, ys, self.data.cpu(), cmap='gray')
+
+    def save(self, path: str):
+        torch.save(self.data, path)
