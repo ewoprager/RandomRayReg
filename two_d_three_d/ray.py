@@ -80,7 +80,10 @@ class Ray:
         return torch.cat((rands[:, 0:3], torch.nn.functional.normalize(rands[:, 3:6], dim=1)), dim=1)
 
     @staticmethod
-    def generate_true_untransformed(device, size: torch.Tensor, source_position: torch.Tensor) -> torch.Tensor:
+    def generate_true_untransformed(size: torch.Tensor,
+                                    source_position: torch.Tensor,
+                                    *,
+                                    device) -> torch.Tensor:
         """
         :param size: 2D image size
         :param source_position: position of simulated X-ray source

@@ -77,7 +77,7 @@ class Main:
     def plot_landscape(self, *, load_rays_from_cache: bool=False):
         m: int = 5
         _, axes = plt.subplots()
-        alpha = 1.
+        alpha = 0.3
         # ray_density = 500.
         # ray_count = int(np.ceil(4. * (torch.norm(self.registration.source_position) / alpha).square() * ray_density))
         ray_count = 3000000
@@ -144,13 +144,13 @@ class Main:
                                                                                               blur_constant),
                       color=colour, linestyle='-')
 
-            ray_subset_count = ray_subset_count // 2
+            alpha *= 1.5
 
             # axes.plot(thetas, ss_clipped, label="clipped, av. sum n = {:.3f}".format(asn_clipped), color=colour, linestyle='--')
 
         toc = time.time()
         print("Done. Took {:.3f}s".format(toc - tic))
-        axes.vlines(-self.true_theta.value[5].item(), -1., axes.get_ylim()[1])
+        axes.vlines(self.true_theta.value[5].item(), -1., axes.get_ylim()[1])
         # ray_density *= 2.
 
         # plt.legend()

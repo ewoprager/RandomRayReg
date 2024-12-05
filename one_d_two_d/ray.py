@@ -51,14 +51,18 @@ class Ray:
         return torch.cat((rands[:, 0:2], torch.nn.functional.normalize(rands[:, 2:4], dim=1)), dim=1)
 
     @staticmethod
-    def generate_true_untransformed(count: torch.Tensor, source_position: torch.Tensor) -> torch.Tensor:
+    def generate_true_untransformed(count: torch.Tensor,
+                                    source_position: torch.Tensor,
+                                    *,
+                                    device) -> torch.Tensor:
         """
         :param count:
         :param source_position: position of simulated X-ray source
         :return: tensor of rays that would correspond to a `count` pixel DRR sitting on the y-axis
         """
-        y_plane_intersections = torch.cat((torch.zeros(count.item(), 1), torch.linspace(-1., 1., count.item())[:, None]), dim=1)
-        return torch.cat((source_position.repeat((count.item(), 1)), torch.nn.functional.normalize(y_plane_intersections - source_position, dim=1)), dim=1)
+        source_position_device = source_position.to(device)
+        y_plane_intersections = torch.cat((torch.zeros(count.item(), 1, device=device), torch.linspace(-1., 1., count.item(), device=device)[:, None]), dim=1)
+        return torch.cat((source_position_device.repeat((count.item(), 1)), torch.nn.functional.normalize(y_plane_intersections - source_position_device, dim=1)), dim=1)
 
     @staticmethod
     def plot(axes, rays: torch.Tensor, shades: torch.Tensor):
