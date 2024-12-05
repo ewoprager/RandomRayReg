@@ -1,5 +1,6 @@
 import torch
 from typing import Union, TypeAlias
+import matplotlib.pyplot as plt
 
 class Registration:
     """
@@ -24,7 +25,7 @@ class Registration:
     def set_image_from_random_drr(self,
                                   *,
                                   image_size: torch.Tensor,
-                                  drr_alpha: float=.5):
+                                  drr_alpha: float):
         true_theta = self.ray_type.Transformation()
         true_theta.randomise()
         self.set_image(self.generate_drr(true_theta, image_size=image_size, alpha=drr_alpha))
@@ -40,13 +41,13 @@ class Registration:
     def generate_drr(self,
                      theta,
                      *,
-                     image_size: torch.Tensor,
-                     alpha: float=.5):
+                     alpha: float,
+                     image_size: torch.Tensor):
         """
         :param theta: Transformation of the DRR, of type `self.ray.Transformation`
         :return: A DRR through the stored CT volume at the given transformation, `theta`.
         """
-        drr_rays = self.ray_type.transform(self.ray_type.generate_true_untransformed(image_size, self.source_position, device=self.volume.data.device), theta)
+        drr_rays = self.ray_type.transform(self.ray_type.generate_true_untransformed(image_size, self.source_position, device=self.volume.data.device), theta.inverse())
         drr_data = self.volume.integrate(drr_rays, alpha=alpha)
         drr_data[drr_data.isnan()] = 0.
-        return self.image_type(drr_data.reshape(tuple(image_size)))
+        return self.image_type(drr_data.reshape(tuple(image_size)).t())

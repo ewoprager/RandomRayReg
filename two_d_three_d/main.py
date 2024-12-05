@@ -18,12 +18,14 @@ class Main:
                  registration: Registration,
                  *,
                  source_position: torch.Tensor,
+                 drr_alpha: float,
                  true_theta: Union[torch.Tensor, None]=None,
                  cache_directory: Union[str, None]=None,
                  save_or_load: Union[bool, None]=None):
         assert (init_key is self.__class__.__init_key), "Constructor is private"
         self.registration = registration
         self.source_position = source_position
+        self.drr_alpha = drr_alpha
         self.true_theta = true_theta
         self.cache_directory = cache_directory
         self.save_or_load = save_or_load
@@ -32,8 +34,16 @@ class Main:
             if not self.save_or_load:
                 self.registration.save_image(self.cache_directory)
                 torch.save(source_position, self.cache_directory + "/source_position.pt")
+                torch.save(drr_alpha, self.cache_directory + "/drr_alpha.pt")
                 if true_theta is not None:
                     torch.save(self.true_theta, self.cache_directory + "/true_theta.pt")
+
+        # display drr target
+        _, axes = plt.subplots()
+        self.registration.image.display(axes)
+        plt.axis('square')
+        plt.title("DRR at true orientation = {:.1f} (simulated X-ray intensity)".format(self.true_theta))
+        plt.show()
 
     @classmethod
     def new_drr_registration(cls,
@@ -42,7 +52,7 @@ class Main:
                              device,
                              image_size: torch.Tensor,
                              source_position: torch.Tensor,
-                             drr_alpha: float=.5,
+                             drr_alpha: float,
                              cache_directory: Union[str, None]=None):
         volume = Volume.from_file(volume_path, device=device)
         if cache_directory is not None:
@@ -50,14 +60,7 @@ class Main:
 
         registration = Registration(Ray, Image, volume, source_position=source_position)
         true_theta = registration.set_image_from_random_drr(image_size=image_size, drr_alpha=drr_alpha)
-
-        # display drr target
-        _, ax0 = plt.subplots()
-        registration.image.display(ax0)
-        plt.title("DRR at true orientation = {:.1f} (simulated X-ray intensity)".format(true_theta))
-        plt.show()
-
-        return cls(cls.__init_key, registration, source_position=source_position, true_theta=true_theta, cache_directory=cache_directory, save_or_load=False)
+        return cls(cls.__init_key, registration, source_position=source_position, drr_alpha=drr_alpha, true_theta=true_theta, cache_directory=cache_directory, save_or_load=False)
 
     @classmethod
     def load(cls,
@@ -65,13 +68,14 @@ class Main:
              *,
              device):
         volume = Volume.load(cache_directory, device=device)
-        registration = Registration(Ray, Image, volume, source_position=torch.load(cache_directory + "/source_position.pt"))
+        source_position = torch.load(cache_directory + "/source_position.pt")
+        registration = Registration(Ray, Image, volume, source_position=source_position)
         registration.load_image(cache_directory)
         true_theta = None
         if os.path.exists(cache_directory + "/true_theta.pt"):
             true_theta = torch.load(cache_directory + "/true_theta.pt")
 
-        return cls(cls.__init_key, registration, source_position=torch.load(cache_directory + "/source_position.pt"), true_theta=true_theta, cache_directory=cache_directory, save_or_load=True)
+        return cls(cls.__init_key, registration, source_position=source_position, drr_alpha=torch.load(cache_directory + "/drr_alpha.pt"), true_theta=true_theta, cache_directory=cache_directory, save_or_load=True)
 
     def plot_landscape(self, *, load_rays_from_cache: bool=False):
         m: int = 3
@@ -90,7 +94,7 @@ class Main:
         if rays is None:
             print("Generating {} rays...".format(ray_count))
             tic = time.time()
-            rays = RandomRays.new(self.registration, ray_count=ray_count)
+            rays = RandomRays.new(self.registration, integrate_alpha=self.drr_alpha, ray_count=ray_count)
             toc = time.time()
             print("Done. Took {:.3f}s".format(toc - tic))
             if self.cache_directory is not None:
@@ -117,11 +121,11 @@ class Main:
             for i in range(theta_count):
 
                 similarity, sum_n = rays.evaluate(Ray.Transformation(thetas[i]),
-                                      alpha=torch.tensor([alpha]),
-                                      blur_constant=torch.tensor([blur_constant]),
-                                      clip=False,
-                                      ray_count=ray_subset_count,
-                                      debug_plots=abs(thetas[i, 5] - self.true_theta.value[5]) < 0.04)
+                                                  alpha=torch.tensor([alpha]),
+                                                  blur_constant=torch.tensor([blur_constant]),
+                                                  clip=False,
+                                                  ray_count=ray_subset_count,
+                                                  debug_plots=abs(thetas[i, 5] - self.true_theta.value[5]) < 0.04)
                 # print(s, sn)
                 landscapes[j, i] = similarity.item()
                 average_sum_ns[j] += sum_n

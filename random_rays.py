@@ -31,9 +31,13 @@ class RandomRays:
         self.intensities = intensities
 
     @classmethod
-    def new(cls, registration: Registration, ray_count: int=1000):
+    def new(cls,
+            registration: Registration,
+            *,
+            integrate_alpha: float,
+            ray_count: int=1000):
         data = registration.ray_type.generate_random(ray_count)
-        intensities = registration.volume.integrate(data)
+        intensities = registration.volume.integrate(data, alpha=integrate_alpha)
         return cls(cls.__init_key, registration, data, intensities)
 
     @classmethod
@@ -101,8 +105,10 @@ class RandomRays:
             plot_intensities = (self.intensities if ray_count is None else self.intensities[0:ray_count])[
                 plot_indices]
             plt.scatter(plot_positions[:, 0], plot_positions[:, 1], c=plot_intensities, s=0.3)
+            plt.axis('square')
             plt.show()
             plt.scatter(plot_positions[:, 0], plot_positions[:, 1], c=plot_samples, s=0.3)
+            plt.axis('square')
             plt.show()
         ##
 

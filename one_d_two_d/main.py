@@ -60,7 +60,7 @@ class Main:
         alpha = 1.
         ray_density = 1000.
         ray_count = int(np.ceil(torch.norm(self.registration.source_position) * ray_density * np.sqrt(np.pi) / alpha))
-        rays = RandomRays.new(self.registration, ray_count=ray_count)
+        rays = RandomRays.new(self.registration, integrate_alpha=self.drr_alpha, ray_count=ray_count)
         blur_constant = 4.
         # for j in range(m):
         cmap = mpl.colormaps['viridis']
@@ -115,7 +115,7 @@ class Main:
         blur_constant = 4.
 
         ray_count = int(np.ceil(torch.norm(self.registration.source_position) * ray_density * np.sqrt(np.pi) / alpha))
-        rays = RandomRays.new(self.registration, ray_count=ray_count)
+        rays = RandomRays.new(self.registration, integrate_alpha=self.drr_alpha, ray_count=ray_count)
 
         thetas = []
         ss = []

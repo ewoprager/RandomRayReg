@@ -63,8 +63,8 @@ class Volume:
     def integrate(self,
                   rays: torch.Tensor,
                   *,
-                  n: int=500,
-                  alpha: float=.5) -> torch.Tensor:
+                  alpha: float,
+                  n: int=500) -> torch.Tensor:
         """
         :param rays: tensor of rays to integrate along
         :param n: The number of points to sample along each ray

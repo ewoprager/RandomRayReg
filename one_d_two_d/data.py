@@ -20,11 +20,11 @@ class Volume:
         """
         return torch.nn.functional.grid_sample(self.data[None, None, :, :], positions[None, None, :, :], align_corners=False)[0, 0, 0]
 
-    def integrate(self, rays: torch.Tensor, n: int=200, alpha: float=0.5) -> torch.Tensor:
+    def integrate(self, rays: torch.Tensor, alpha: float, n: int=200) -> torch.Tensor:
         """
         :param rays: tensor of rays to integrate along
-        :param n: The number of points to sample along each ray
         :param alpha: X-ray attenuation factor
+        :param n: The number of points to sample along each ray
         :return: A tensor of approximations of the X-ray intensities attenuated along the given rays through the CT
                  volume. This is calculated as `1 - exp(-alpha * sum)` where `sum` is the approximate average value
                  along rays in the CT volume.
