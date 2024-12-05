@@ -1,5 +1,6 @@
 .venv/
 .venv3.10/
+.venv3.12/
 .DS_Store
 .idea/
 Data/

@@ -9,16 +9,41 @@ class RandomRays:
     """
     A number of rays generated at random transformations and integrated along in a CT volume to be used for registration
     """
+    __init_key = object()
     def __init__(self,
+                 init_key,
                  registration: Registration,
-                 ray_count: int=1000):
+                 data: torch.Tensor,
+                 intensities: torch.Tensor):
+        """
+        Private constructor
+        :param init_key:
+        :param registration: Registration task object
+        :param data: tensor of rays
+        :param intensities: tensor of pre-calculated radiological paths for the rays
+        """
+        assert (init_key is self.__class__.__init_key), "Constructor is private"
         self.registration = registration
-        self.ray_type: TypeAlias = self.registration.ray_type
-        self.ray_count = ray_count
+        self.ray_type = self.registration.ray_type
+        self.data = data
+        self.ray_count = self.data.size()[0]
+        self.intensities = intensities
 
-        # rays are defined by two 2D vectors: an origin and direction in CT space
-        self.data = self.ray_type.generate_random(self.ray_count)
-        self.intensities = self.registration.volume.integrate(self.data)
+    @classmethod
+    def new(cls, registration: Registration, ray_count: int=1000):
+        data = registration.ray_type.generate_random(ray_count)
+        intensities = registration.volume.integrate(data)
+        return cls(cls.__init_key, registration, data, intensities)
+
+    @classmethod
+    def load(cls, registration: Registration, cache_directory: str):
+        data = torch.load(cache_directory + "/rays.pt")
+        intensities = torch.load(cache_directory + "/intensities.pt")
+        return cls(cls.__init_key, registration, data, intensities)
+
+    def save(self, cache_directory: str):
+        torch.save(self.data, cache_directory + "/rays.pt")
+        torch.save(self.intensities, cache_directory + "/intensities.pt")
 
     def plot_with_intensity_shading(self, axes):
         """
@@ -91,9 +116,3 @@ class RandomRays:
         negative_zncc.backward(torch.ones_like(negative_zncc))
         theta.disable_grad()
         return negative_zncc, sum_n
-
-    def save(self, cache_directory: str):
-        torch.save(self.data, cache_directory + "/rays.pt")
-        torch.save(self.intensities, cache_directory + "/intensities.pt")
-        self.registration.save(cache_directory)
-

@@ -1,10 +1,11 @@
-import sys
+import sys, os
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import nrrd
 import gc
+from typing import Union
+import time
 
 from two_d_three_d.data import Ray, Volume, Image
 import tools
@@ -12,64 +13,99 @@ from random_rays import RandomRays, Registration
 
 
 class Main:
+    __init_key = object()
     def __init__(self,
-                 image_size: torch.Tensor,
-                 volume_data: torch.Tensor,
-                 drr_alpha: float=.5):
-        self.image_size = image_size
-        self.volume_data = volume_data
-        # self.volume_size = volume_size
+                 init_key,
+                 registration: Registration,
+                 *,
+                 source_position: torch.Tensor,
+                 true_theta: Union[torch.Tensor, None]=None,
+                 cache_directory: Union[str, None]=None,
+                 save_or_load: Union[bool, None]=None):
+        assert (init_key is self.__class__.__init_key), "Constructor is private"
+        self.registration = registration
+        self.source_position = source_position
+        self.true_theta = true_theta
+        self.cache_directory = cache_directory
+        self.save_or_load = save_or_load
 
-        # CT space is 2D, exists between (-1,-1) and (1,1)
-        self.volume = Volume(self.volume_data)
+        if self.save_or_load is not None and self.cache_directory is not None:
+            if not self.save_or_load:
+                self.registration.save_image(self.cache_directory)
+                torch.save(source_position, self.cache_directory + "/source_position.pt")
+                if true_theta is not None:
+                    torch.save(self.true_theta, self.cache_directory + "/true_theta.pt")
 
-        self.registration = Registration(Ray, Image, self.volume, image_size, source_position=torch.tensor([0., 0., 11.]), drr_alpha=drr_alpha)
+    @classmethod
+    def new_drr_registration(cls,
+                             volume_path: str,
+                             *,
+                             device,
+                             image_size: torch.Tensor,
+                             source_position: torch.Tensor,
+                             drr_alpha: float=.5,
+                             cache_directory: Union[str, None]=None):
+        volume = Volume.from_file(volume_path, device=device)
+        if cache_directory is not None:
+            volume.save(cache_directory)
+
+        registration = Registration(Ray, Image, volume, source_position=source_position)
+        true_theta = registration.set_image_from_random_drr(image_size=image_size, drr_alpha=drr_alpha)
 
         # display drr target
         _, ax0 = plt.subplots()
-        self.registration.image.display(ax0)
-        plt.title("DRR at true orientation = {:.3f} (simulated X-ray intensity)".format(self.registration.true_theta))
+        registration.image.display(ax0)
+        plt.title("DRR at true orientation = {:.1f} (simulated X-ray intensity)".format(true_theta))
         plt.show()
 
-        # display volume
-        # _, ax1 = plt.subplots()
-        # self.registration.volume.display(ax1)
-        # ax1.set_ylim(-1., 1.)
-        # plt.title("CT volume (X-ray attenuation coefficient)")
-        # plt.show()
+        return cls(cls.__init_key, registration, source_position=source_position, true_theta=true_theta, cache_directory=cache_directory, save_or_load=False)
 
-        # display volume, with rays colours according to fixed image brightness
-        # _, ax1 = plt.subplots()
-        # self.registration.volume.display(ax1)
-        # rays.plot_with_sampled_shading(ax1)
-        # ax1.set_ylim(-1., 1.)
-        # plt.show()
+    @classmethod
+    def load(cls,
+             cache_directory: str,
+             *,
+             device):
+        volume = Volume.load(cache_directory, device=device)
+        registration = Registration(Ray, Image, volume, source_position=torch.load(cache_directory + "/source_position.pt"))
+        registration.load_image(cache_directory)
+        true_theta = None
+        if os.path.exists(cache_directory + "/true_theta.pt"):
+            true_theta = torch.load(cache_directory + "/true_theta.pt")
 
-        # display volume, with rays coloured according to volume integral
-        # _, ax2 = plt.subplots()
-        # self.registration.volume.display(ax2)
-        # rays.plot_with_intensity_shading(ax2)
-        # ax2.set_ylim(-1., 1.)
-        # plt.show()
+        return cls(cls.__init_key, registration, source_position=torch.load(cache_directory + "/source_position.pt"), true_theta=true_theta, cache_directory=cache_directory, save_or_load=True)
 
-    def plot_landscape(self):
+    def plot_landscape(self, *, load_rays_from_cache: bool=False):
         m: int = 5
         _, axes = plt.subplots()
         alpha = 1.
         # ray_density = 500.
         # ray_count = int(np.ceil(4. * (torch.norm(self.registration.source_position) / alpha).square() * ray_density))
-        max_ray_count = 3000
-        rays = RandomRays(self.registration, ray_count=max_ray_count)
-        rays.save("two_d_three_d/cache")
+        ray_count = 3000000
+        ray_subset_count = ray_count
 
-        ray_count = max_ray_count
+        rays = None
+        if load_rays_from_cache and self.cache_directory is not None:
+            rays = RandomRays.load(self.registration, self.cache_directory)
+            if rays.ray_count < ray_count:
+                rays = None
+
+        if rays is None:
+            print("Generating {} rays...".format(ray_count))
+            tic = time.time()
+            rays = RandomRays.new(self.registration, ray_count=ray_count)
+            toc = time.time()
+            print("Done. Took {:.3f}s".format(toc - tic))
+            if self.cache_directory is not None:
+                rays.save(self.cache_directory)
 
         blur_constant = 4.
 
         cmap = mpl.colormaps['viridis']
 
         theta_count = 200
-        thetas = torch.cat((self.registration.true_theta.value[0:5].repeat(theta_count, 1), torch.linspace(-torch.pi, torch.pi, theta_count)[:, None]), dim=1)
+        thetas = torch.cat((self.true_theta.value[0:5].repeat(theta_count, 1), torch.linspace(-torch.pi, torch.pi, theta_count)[:, None]), dim=1)
+        print("Evaluating {} landscapes...".format(m))
+        tic = time.time()
         for j in range(m):
             # alpha = .4 * 2.**j
 
@@ -77,12 +113,15 @@ class Main:
             ssn = 0.
             # ss_clipped = ss.clone()
             # ssn_clipped = 0.
+            print("\tPerforming {} evaluations for alpha = {:.2f}...".format(theta_count, alpha))
+            _tic = time.time()
             for i in range(theta_count):
+
                 s, sn = rays.evaluate(Ray.Transformation(thetas[i]),
                                       alpha=torch.tensor([alpha]),
                                       blur_constant=torch.tensor([blur_constant]),
                                       clip=False,
-                                      ray_count=ray_count)
+                                      ray_count=ray_subset_count)
                 # print(s, sn)
                 ss[i] = s.item()
                 ssn += sn
@@ -94,9 +133,8 @@ class Main:
                 # ss_clipped[i] = s_clipped.item()
                 # ssn_clipped += sn_clipped
 
-                gc.collect()
-
-                ray_count = (2 * ray_count) // 3
+            _toc = time.time()
+            print("\tDone. Took {:.3f}s".format(_toc - _tic))
 
             asn = ssn / float(theta_count)
             # asn_clipped = ssn_clipped / float(thetas.size()[0])
@@ -106,9 +144,13 @@ class Main:
                                                                                               blur_constant),
                       color=colour, linestyle='-')
 
+            ray_subset_count = ray_subset_count // 2
+
             # axes.plot(thetas, ss_clipped, label="clipped, av. sum n = {:.3f}".format(asn_clipped), color=colour, linestyle='--')
 
-        axes.vlines(-self.registration.true_theta.value[5].item(), -1., axes.get_ylim()[1])
+        toc = time.time()
+        print("Done. Took {:.3f}s".format(toc - tic))
+        axes.vlines(-self.true_theta.value[5].item(), -1., axes.get_ylim()[1])
         # ray_density *= 2.
 
         # plt.legend()
@@ -118,7 +160,7 @@ class Main:
         plt.show()
 
     def optimise(self):
-        print("True theta:", -self.registration.true_theta.value.item())
+        print("True theta:", -self.true_theta.value.item())
 
         alpha = 1.
         ray_density = 100.
@@ -150,7 +192,7 @@ class Main:
         plt.title("DRR at final orientation = {:.3f} (simulated X-ray intensity)".format(theta.value.item()))
         plt.show()
 
-        error = tools.fix_angle(theta.value + self.registration.true_theta.value)
+        error = tools.fix_angle(theta.value + self.true_theta.value)
         print("Distance: ", torch.abs(error).item())
 
         fig, ax1 = plt.subplots()
@@ -175,24 +217,24 @@ class Main:
 
 
 if __name__ == "__main__":
-    sys.settrace(None)
-
-    if len(sys.argv) != 2:
-        print("Please pass a single argument: a path to a CT volume file.")
-        exit(1)
-
     ct_path = sys.argv[1]
 
-    data, header = nrrd.read(ct_path)
+    load_cached: bool = (len(sys.argv) > 2 and sys.argv[2] == "load_cached")
 
     # device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
-    device = torch.device('cpu')
+    dev = torch.device('cpu')
 
-    volume_data = torch.maximum(torch.tensor(data, device=device).type(torch.float32) + 1000., torch.tensor([0.], device=device))
+    if load_cached:
+        main = Main.load("two_d_three_d/cache", device=dev)
+    else:
+        main = Main.new_drr_registration(ct_path,
+                                         device=dev,
+                                         image_size=torch.tensor([1000, 1000]),
+                                         source_position=torch.tensor([0., 0., 11.]),
+                                         drr_alpha=2000.,
+                                         cache_directory="two_d_three_d/cache")
 
-    main = Main(image_size=torch.tensor([100, 100]), volume_data=volume_data, drr_alpha=2000.)
-
-    main.plot_landscape()
+    main.plot_landscape(load_rays_from_cache=load_cached)
 
     exit()
 

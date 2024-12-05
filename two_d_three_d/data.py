@@ -3,6 +3,8 @@ import numpy as np
 import torch
 import kornia
 import time
+import nrrd
+from dataclasses import dataclass
 
 import tools
 from two_d_three_d.ray import Ray
@@ -11,9 +13,39 @@ class Volume:
     """
     A 3D image that rays can be integrated along through
     """
-    def __init__(self, data: torch.Tensor):
-        self.data = data
+    __init_key = object()
+    def __init__(self,
+                 init_key,
+                 path: str,
+                 data: torch.Tensor):
+        """
+        Private constructor
+        :param init_key:
+        :param data: tensor of raw CT data in Houndsfield units
+        """
+        assert (init_key is self.__class__.__init_key), "Constructor is private"
+        self.path = path
+        self.data = torch.maximum(data.type(torch.float32) + 1000., torch.tensor([0.], device=data.device))
         self.size = data.size()
+
+    @classmethod
+    def from_file(cls,
+                  path: str,
+                  *,
+                  device):
+        data, _ = nrrd.read(path)
+        return cls(cls.__init_key, path, torch.tensor(data, device=device))
+
+    @classmethod
+    def load(cls,
+             cache_directory: str,
+             *,
+             device):
+        path = torch.load(cache_directory + "/volume.pt")
+        return cls.from_file(path, device=device)
+
+    def save(self, cache_directory: str):
+        torch.save(self.path, cache_directory + "/volume.pt")
 
     def samples(self, positions: torch.Tensor) -> torch.Tensor:
         """
@@ -25,9 +57,15 @@ class Volume:
 
         # data_cpu = self.data[None, None, :, :, :].cpu()
         # positions_cpu = positions[None, None, None, :, :].cpu()
+        # torch.nn.functional.grid_sample does not yet work on `mps` device, but tried implementing my own version in
+        # Python that could use `mps`, but it was slower.
         return torch.nn.functional.grid_sample(self.data[None, None, :, :, :], positions[None, None, None, :, :], align_corners=False)[0, 0, 0, 0].to(self.data.device)
 
-    def integrate(self, rays: torch.Tensor, n: int=500, alpha: float=.5) -> torch.Tensor:
+    def integrate(self,
+                  rays: torch.Tensor,
+                  *,
+                  n: int=500,
+                  alpha: float=.5) -> torch.Tensor:
         """
         :param rays: tensor of rays to integrate along
         :param n: The number of points to sample along each ray
@@ -36,10 +74,6 @@ class Volume:
                  volume. This is calculated as `1 - exp(-alpha * sum)` where `sum` is the approximate average value
                  along rays in the CT volume.
         """
-        print("Integrating {} rays".format(rays.size()[0]))
-        print("Pre-processing...")
-        tic = time.time()
-
         inters_x0, ls_x0 = Ray.yz_plane_intersections(rays, -1.)
         inters_x1, ls_x1 = Ray.yz_plane_intersections(rays, 1.)
         inters_y0, ls_y0 = Ray.xz_plane_intersections(rays, -1.)
@@ -56,15 +90,9 @@ class Volume:
 
         ps = rays[:, 0:3] + start_lambdas[:, None] * rays[:, 3:6]
         ret = torch.zeros(rays.size()[0], device=self.data.device)
-        toc = time.time()
-        print("Done. Took {:.3f}s".format(toc - tic))
-        print("Looping...")
-        tic = time.time()
         for i in range(n):
             ret += self.samples(ps)
             ps += deltas
-        toc = time.time()
-        print("Done. Took {:.3f}s".format(toc - tic))
         return 1. - torch.exp(-ret / (alpha * float(n)))
 
     # def display(self, axes):
@@ -72,15 +100,17 @@ class Volume:
     #     axes.pcolormesh(X, Y, self.data, cmap='gray')
 
 
+@dataclass
 class Image:
     """
     A 2D image that can be sampled using rays
     """
-    def __init__(self, data: torch.Tensor):
-        self.data = data
-        self.size = data.size()
+    data: torch.Tensor
 
-    def samples(self, rays: torch.Tensor, blur_sigma: Union[torch.Tensor, None]=None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def samples(self,
+                rays: torch.Tensor,
+                *,
+                blur_sigma: Union[torch.Tensor, None]=None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Interpolates samples from the stored image where the given rays intersect the y-axis.
         :param rays: tensor of rays
@@ -91,7 +121,11 @@ class Image:
         positions, _ = Ray.xy_plane_intersections(rays)
 
         # sampling
-        ret = torch.nn.functional.grid_sample(self.data[None, None, :, :], positions[None, None, :, :], align_corners=False)[0, 0, 0]
+
+        # !!! torch.nn.functional.grid_sample can SIGSEGV with too large a number of positions; own version does not and
+        # doesn't seem to run any slower on cpu.
+        # ret = torch.nn.functional.grid_sample(data[None, None, :, :], positions[None, None, :, :], align_corners=False)[0, 0, 0]
+        ret = tools.grid_sample2d(data, positions)
 
         # determining image-edge weight modifications
         #weights = (1. - fs) * torch.logical_not(i0s_out).type(torch.float32) + fs * torch.logical_not(i1s_out).type(torch.float32)
@@ -99,8 +133,5 @@ class Image:
         return ret, torch.zeros(1) #weights
 
     def display(self, axes):
-        xs, ys = np.meshgrid(np.linspace(-1., 1., self.size[0], endpoint=True), np.linspace(-1., 1., self.size[1], endpoint=True))
+        xs, ys = np.meshgrid(np.linspace(-1., 1., self.data.size()[0], endpoint=True), np.linspace(-1., 1., self.data.size()[1], endpoint=True))
         axes.pcolormesh(xs, ys, self.data.cpu(), cmap='gray')
-
-    def save(self, path: str):
-        torch.save(self.data, path)
