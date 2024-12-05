@@ -75,7 +75,7 @@ The WZNCC and orientation developed as follows over the course of the optimisati
 
 # Setup
 
-Developed with `Python 3.10.14`.
+Developed with `Python 3.12.4`.
 
 Install requirements with
 ```bash
