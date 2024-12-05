@@ -1,5 +1,5 @@
 import torch
-from typing import Union, TypeAlias
+from typing import Union
 import matplotlib.pyplot as plt
 
 import tools

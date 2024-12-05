@@ -3,7 +3,6 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import gc
 from typing import Union
 import time
 

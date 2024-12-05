@@ -2,7 +2,6 @@ from typing import Union, Tuple
 import numpy as np
 import torch
 import kornia
-import time
 import nrrd
 from dataclasses import dataclass
 

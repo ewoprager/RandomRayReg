@@ -2,8 +2,6 @@ import numpy as np
 import torch
 from typing import Tuple
 
-from torch.xpu import device
-
 
 def rotate_vector2d(vector: torch.Tensor, angle: torch.Tensor) -> torch.Tensor:
     return torch.matmul(torch.tensor([[torch.cos(angle), -torch.sin(angle)], [torch.sin(angle), torch.cos(angle)]]), vector)
