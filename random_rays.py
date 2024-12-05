@@ -1,5 +1,6 @@
 import torch
 from typing import Union, TypeAlias
+import matplotlib.pyplot as plt
 
 import tools
 from registration import Registration
@@ -70,7 +71,8 @@ class RandomRays:
                  alpha: torch.Tensor=torch.tensor([0.14]),
                  blur_constant: torch.Tensor=torch.Tensor([1.]),
                  clip: bool=True,
-                 ray_count: Union[int, None]=None) -> (torch.Tensor, torch.Tensor):
+                 ray_count: Union[int, None]=None,
+                 debug_plots: bool=False) -> (torch.Tensor, torch.Tensor):
         """
         Find the approximation of the ZNCC between the fixed image and a DRR at the given transformation, theta, using
         the stored pre-integrated rays.
@@ -85,11 +87,25 @@ class RandomRays:
         # sampling from blurred image for every ray
         normalised_alpha = alpha / torch.norm(self.registration.source_position)
         blur_sigma = blur_constant * normalised_alpha
-        samples, weight_modifications = self.registration.image.samples(transformed_rays, blur_sigma=blur_sigma)
+        samples, weight_modifications, positions = self.registration.image.samples(transformed_rays, blur_sigma=blur_sigma)
         # scoring rays on distance from source
         scores = self.ray_type.scores(transformed_rays, self.registration.source_position, alpha=alpha)
         if clip:
             scores = scores * weight_modifications
+
+        ## plotting pseudo-image
+        if debug_plots:
+            plot_indices = torch.logical_and(positions.abs().max(dim=-1)[0] < 1., scores > 0.3)
+            plot_positions = positions[plot_indices]
+            plot_samples = samples[plot_indices]
+            plot_intensities = (self.intensities if ray_count is None else self.intensities[0:ray_count])[
+                plot_indices]
+            plt.scatter(plot_positions[:, 0], plot_positions[:, 1], c=plot_intensities, s=0.3)
+            plt.show()
+            plt.scatter(plot_positions[:, 0], plot_positions[:, 1], c=plot_samples, s=0.3)
+            plt.show()
+        ##
+
         # calculating similarity between samples and intensities, weighted by scores
         negative_zncc = -tools.weighted_zero_normalised_cross_correlation(samples, self.intensities if ray_count is None else self.intensities[0:ray_count], scores)
         sum_n = scores.sum()

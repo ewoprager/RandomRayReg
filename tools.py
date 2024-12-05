@@ -55,7 +55,7 @@ def grid_sample1d(data: torch.Tensor, positions: torch.Tensor) -> Tuple[torch.Te
     return ret, weights
 
 
-def grid_sample2d(data: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:
+def grid_sample2d(data: torch.Tensor, positions: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
 
     :param data:
@@ -63,29 +63,40 @@ def grid_sample2d(data: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:
     :return:
     """
     positions_transformed = .5 * (positions + 1.) * (torch.tensor(data.size(), dtype=torch.float32, device=data.device) - 1.)
-    i0s = torch.floor(positions_transformed.clone().detach()).type(torch.int64)
-    fs = positions_transformed - i0s.type(torch.float32)
+    i0j0s = torch.floor(positions_transformed.clone().detach()).type(torch.int64)
+    fs = positions_transformed - i0j0s.type(torch.float32)
     with_zero = torch.cat((torch.zeros(1, data.size()[1], device=data.device), data))
-    i0s[:, 0] = i0s[:, 0] + 1
-    i1s = i0s + 1
-    i0s_out = torch.logical_not(torch.logical_and((i0s >= torch.tensor([1, 0], device=data.device)).prod(dim=-1), (i0s < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1)))
-    i1s_out = torch.logical_not(torch.logical_and((i1s >= torch.tensor([1, 0], device=data.device)).prod(dim=-1), (i1s < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1)))
-    i0s[i0s_out, :] = 0
-    i1s[i1s_out, :] = 0
+    i0j0s[:, 0] += 1
+    i0j1s = i0j0s.clone()
+    i0j1s[:, 1] += 1
+    i1j0s = i0j0s.clone()
+    i1j0s[:, 0] += 1
+    i1j1s = i0j0s + 1
+
+    i0j0s_in = torch.logical_and((i0j0s >= torch.tensor([1, 0], device=data.device)).prod(dim=-1), (i0j0s < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1))
+    i0j1s_in = torch.logical_and((i0j1s >= torch.tensor([1, 0], device=data.device)).prod(dim=-1), (i0j1s < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1))
+    i1j0s_in = torch.logical_and((i1j0s >= torch.tensor([1, 0], device=data.device)).prod(dim=-1), (i1j0s < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1))
+    i1j1s_in = torch.logical_and((i1j1s >= torch.tensor([1, 0], device=data.device)).prod(dim=-1), (i1j1s < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1))
+
+    i0j0s[torch.logical_not(i0j0s_in), :] = 0
+    i0j1s[torch.logical_not(i0j1s_in), :] = 0
+    i1j0s[torch.logical_not(i1j0s_in), :] = 0
+    i1j1s[torch.logical_not(i1j1s_in), :] = 0
 
     # determining image-edge weight modifications
-    # weights = (1. - fs) * torch.logical_not(i0s_out).type(torch.float32) + fs * torch.logical_not(i1s_out).type(torch.float32)
+    weights_i_interpolated_j0 = (1. - fs[:, 0]) * i0j0s_in.type(torch.float32) + fs[:, 0] * i1j0s_in.type(torch.float32)
+    weights_i_interpolated_j1 = (1. - fs[:, 0]) * i0j1s_in.type(torch.float32) + fs[:, 0] * i1j1s_in.type(torch.float32)
+    weights = (1. - fs[:, 1]) * weights_i_interpolated_j0 + fs[:, 1] * weights_i_interpolated_j1
 
     # sampling
-    is_x0 = i0s[:, 0, None].repeat(1, 2)
-    js_x = torch.cat((i0s[:, 1, None], i1s[:, 1, None]), dim=-1)
-    is_x1 = i1s[:, 0, None].repeat(1, 2)
-    x_interpolated = (1. - fs[:, 0, None]) * with_zero[is_x0, js_x] + fs[:, 0, None] * with_zero[is_x1, js_x]
-    return (1. - fs[:, 1]) * x_interpolated[:, 0] + fs[:, 1] * x_interpolated[:, 1]
+    is_i0 = torch.cat((i0j0s[:, 0, None], i0j1s[:, 0, None]), dim=-1)
+    js_i0 = torch.cat((i0j0s[:, 1, None], i0j1s[:, 1, None]), dim=-1)
+    is_i1 = torch.cat((i1j0s[:, 0, None], i1j1s[:, 0, None]), dim=-1)
+    js_i1 = torch.cat((i1j0s[:, 1, None], i1j1s[:, 1, None]), dim=-1)
+    i_interpolated = (1. - fs[:, 0, None]) * with_zero[is_i0, js_i0] + fs[:, 0, None] * with_zero[is_i1, js_i1]
+    ret = (1. - fs[:, 1]) * i_interpolated[:, 0] + fs[:, 1] * i_interpolated[:, 1]
 
-    #ret = (1. - fs) * with_zero[i0s[:, 0], i0s[:, 1], i0s[:, 2]] + fs * with_zero[i1s[:, 0], i1s[:, 1], i1s[:, 2]]
-
-    #return ret #, weights
+    return ret, weights
 
 
 def grid_sample3d(data: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:

@@ -110,7 +110,7 @@ class Image:
     def samples(self,
                 rays: torch.Tensor,
                 *,
-                blur_sigma: Union[torch.Tensor, None]=None) -> Tuple[torch.Tensor, torch.Tensor]:
+                blur_sigma: Union[torch.Tensor, None]=None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Interpolates samples from the stored image where the given rays intersect the y-axis.
         :param rays: tensor of rays
@@ -125,12 +125,12 @@ class Image:
         # !!! torch.nn.functional.grid_sample can SIGSEGV with too large a number of positions; own version does not and
         # doesn't seem to run any slower on cpu.
         # ret = torch.nn.functional.grid_sample(data[None, None, :, :], positions[None, None, :, :], align_corners=False)[0, 0, 0]
-        ret = tools.grid_sample2d(data, positions)
+        ret, weights = tools.grid_sample2d(data, positions)
 
         # determining image-edge weight modifications
         #weights = (1. - fs) * torch.logical_not(i0s_out).type(torch.float32) + fs * torch.logical_not(i1s_out).type(torch.float32)
 
-        return ret, torch.zeros(1) #weights
+        return ret, weights, positions
 
     def display(self, axes):
         xs, ys = np.meshgrid(np.linspace(-1., 1., self.data.size()[0], endpoint=True), np.linspace(-1., 1., self.data.size()[1], endpoint=True))

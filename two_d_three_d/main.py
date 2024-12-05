@@ -75,12 +75,11 @@ class Main:
         return cls(cls.__init_key, registration, source_position=torch.load(cache_directory + "/source_position.pt"), true_theta=true_theta, cache_directory=cache_directory, save_or_load=True)
 
     def plot_landscape(self, *, load_rays_from_cache: bool=False):
-        m: int = 5
-        _, axes = plt.subplots()
-        alpha = 0.3
+        m: int = 3
+        alpha = 0.5
         # ray_density = 500.
         # ray_count = int(np.ceil(4. * (torch.norm(self.registration.source_position) / alpha).square() * ray_density))
-        ray_count = 3000000
+        ray_count = 1000000
         ray_subset_count = ray_count
 
         rays = None
@@ -104,54 +103,59 @@ class Main:
 
         theta_count = 200
         thetas = torch.cat((self.true_theta.value[0:5].repeat(theta_count, 1), torch.linspace(-torch.pi, torch.pi, theta_count)[:, None]), dim=1)
+        landscapes = torch.zeros(m, theta_count)
+        average_sum_ns = torch.zeros(m)
         print("Evaluating {} landscapes...".format(m))
         tic = time.time()
         for j in range(m):
             # alpha = .4 * 2.**j
 
-            ss = torch.zeros(theta_count)
-            ssn = 0.
             # ss_clipped = ss.clone()
             # ssn_clipped = 0.
+
             print("\tPerforming {} evaluations for alpha = {:.2f}...".format(theta_count, alpha))
             _tic = time.time()
             for i in range(theta_count):
 
-                s, sn = rays.evaluate(Ray.Transformation(thetas[i]),
+                similarity, sum_n = rays.evaluate(Ray.Transformation(thetas[i]),
                                       alpha=torch.tensor([alpha]),
                                       blur_constant=torch.tensor([blur_constant]),
                                       clip=False,
-                                      ray_count=ray_subset_count)
+                                      ray_count=ray_subset_count,
+                                      debug_plots=abs(thetas[i, 5] - self.true_theta.value[5]) < 0.04)
                 # print(s, sn)
-                ss[i] = s.item()
-                ssn += sn
+                landscapes[j, i] = similarity.item()
+                average_sum_ns[j] += sum_n
 
                 # s_clipped, sn_clipped = rays.evaluate(Ray.Transformation(thetas[i]),
                 #                                       alpha=torch.tensor([alpha]),
                 #                                       blur_constant=torch.tensor([blur_constant]),
-                #                                       clip=True)
+                #                                       clip=True,
+                #                                       ray_count=ray_subset_count)
                 # ss_clipped[i] = s_clipped.item()
                 # ssn_clipped += sn_clipped
 
             _toc = time.time()
             print("\tDone. Took {:.3f}s".format(_toc - _tic))
 
-            asn = ssn / float(theta_count)
+            average_sum_ns[j] /= float(theta_count)
+
             # asn_clipped = ssn_clipped / float(thetas.size()[0])
-            colour = cmap(float(j) / float(m - 1))
-            axes.plot(thetas[:, 5], ss,
-                      label="alpha = {:.3f}, {} rays, av. sum n = {:.3f}, bc = {:.3f}".format(alpha, ray_count, asn,
-                                                                                              blur_constant),
-                      color=colour, linestyle='-')
 
-            alpha *= 1.5
-
-            # axes.plot(thetas, ss_clipped, label="clipped, av. sum n = {:.3f}".format(asn_clipped), color=colour, linestyle='--')
+            alpha *= 2.
 
         toc = time.time()
         print("Done. Took {:.3f}s".format(toc - tic))
+
+        _, axes = plt.subplots()
+
+        for j in range(m):
+            colour = cmap(float(j) / float(m - 1))
+            axes.plot(thetas[:, 5], landscapes[j], color=colour, linestyle='-')
+
+            # axes.plot(thetas[:, 5], ss_clipped, label="clipped, av. sum n = {:.3f}".format(asn_clipped), color=colour, linestyle='--')
+
         axes.vlines(self.true_theta.value[5].item(), -1., axes.get_ylim()[1])
-        # ray_density *= 2.
 
         # plt.legend()
         plt.title("Optimisation landscape")
