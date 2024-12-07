@@ -31,6 +31,14 @@ class Registration:
         self.set_image(self.generate_drr(true_theta, image_size=image_size, alpha=drr_alpha))
         return true_theta
 
+    def set_image_from_drr(self,
+                           theta,
+                           *,
+                           image_size: torch.Tensor,
+                           drr_alpha: float):
+        assert (isinstance(theta, self.ray_type.Transformation)), "Invalid type of theta given"
+        self.set_image(self.generate_drr(theta, image_size=image_size, alpha=drr_alpha))
+
     def save_image(self, cache_directory: str):
         torch.save(self.image, cache_directory + "/image.pt")
 
@@ -47,7 +55,16 @@ class Registration:
         :param theta: Transformation of the DRR, of type `self.ray.Transformation`
         :return: A DRR through the stored CT volume at the given transformation, `theta`.
         """
-        drr_rays = self.ray_type.transform(self.ray_type.generate_true_untransformed(image_size, self.source_position, device=self.volume.data.device), theta.inverse())
+        untransformed_rays = self.ray_type.generate_true_untransformed(image_size, self.source_position, device=self.volume.data.device)
+        drr_rays = self.ray_type.transform(untransformed_rays, theta.inverse())
         drr_data = self.volume.integrate(drr_rays, alpha=alpha)
         drr_data[drr_data.isnan()] = 0.
+
+        ## for debugging DRR generation; the produced plot should match the DRR image
+        #positions, _ = self.ray_type.xy_plane_intersections(untransformed_rays)
+        #plt.scatter(positions[:, 0], positions[:, 1], c=drr_data, s=0.3)
+        #plt.axis('square')
+        #plt.show()
+        ##
+
         return self.image_type(drr_data.reshape(tuple(image_size)).t())

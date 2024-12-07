@@ -66,39 +66,79 @@ class Main:
     def load(cls,
              cache_directory: str,
              *,
-             device):
+             device,
+             regenerate_drr: bool=False,
+             image_size: Union[torch.Tensor, None]=None):
         volume = Volume.load(cache_directory, device=device)
         source_position = torch.load(cache_directory + "/source_position.pt")
         registration = Registration(Ray, Image, volume, source_position=source_position)
-        registration.load_image(cache_directory)
+        drr_alpha = torch.load(cache_directory + "/drr_alpha.pt")
+        # loading ground truth transformation if it exists
         true_theta = None
         if os.path.exists(cache_directory + "/true_theta.pt"):
             true_theta = torch.load(cache_directory + "/true_theta.pt")
+        # regenerating the DRR if requested and possible
+        if regenerate_drr:
+            if true_theta is None:
+                print("Cannot regenerate DRR with existing transformation, as none exists")
+                regenerate_drr = False
+            if image_size is None:
+                print("To regenerate the DRR, an `image_size` must be provided")
+                regenerate_drr = False
+        if regenerate_drr:
+            registration.set_image_from_drr(true_theta, image_size=image_size, drr_alpha=drr_alpha)
+            registration.save_image(cache_directory)
+        else:
+            registration.load_image(cache_directory)
 
-        return cls(cls.__init_key, registration, source_position=source_position, drr_alpha=torch.load(cache_directory + "/drr_alpha.pt"), true_theta=true_theta, cache_directory=cache_directory, save_or_load=True)
+        return cls(cls.__init_key, registration, source_position=source_position, drr_alpha=drr_alpha, true_theta=true_theta, cache_directory=cache_directory, save_or_load=True)
+
+    def __get_rays(self, ray_count, *, load_rays_from_cache: bool=False):
+        if load_rays_from_cache and self.cache_directory is not None:
+            ret = RandomRays.load(self.registration, self.cache_directory)
+            if ret.ray_count >= ray_count:
+                return ret
+
+        print("Generating {} rays...".format(ray_count))
+        tic = time.time()
+        ret = RandomRays.new(self.registration, integrate_alpha=self.drr_alpha, ray_count=ray_count)
+        toc = time.time()
+        print("Done. Took {:.3f}s".format(toc - tic))
+        if self.cache_directory is not None:
+            ret.save(self.cache_directory)
+        return ret
+
+    def check_match(self, *, load_rays_from_cache: bool=False):
+        assert(self.true_theta is not None), "Cannot check match with no ground truth alignment"
+
+        alpha = .5
+        blur_constant = 4.
+        ray_count = 15000000
+
+        rays = self.__get_rays(ray_count, load_rays_from_cache=load_rays_from_cache)
+
+        similarity, sum_n = rays.evaluate(self.true_theta,
+                                          alpha=torch.tensor([alpha]),
+                                          blur_constant=torch.tensor([blur_constant]),
+                                          clip=False,
+                                          ray_count=ray_count,
+                                          debug_plots=True)
+
+        print("Similarity: {:.3f}", similarity)
+
+        print("Sum n = {:.3f}", sum_n)
 
     def plot_landscape(self, *, load_rays_from_cache: bool=False):
+        assert (self.true_theta is not None), "Cannot plot landscape with no ground truth alignment"
+
         m: int = 3
-        alpha = 0.5
+        alpha = .5
         # ray_density = 500.
         # ray_count = int(np.ceil(4. * (torch.norm(self.registration.source_position) / alpha).square() * ray_density))
         ray_count = 1000000
         ray_subset_count = ray_count
 
-        rays = None
-        if load_rays_from_cache and self.cache_directory is not None:
-            rays = RandomRays.load(self.registration, self.cache_directory)
-            if rays.ray_count < ray_count:
-                rays = None
-
-        if rays is None:
-            print("Generating {} rays...".format(ray_count))
-            tic = time.time()
-            rays = RandomRays.new(self.registration, integrate_alpha=self.drr_alpha, ray_count=ray_count)
-            toc = time.time()
-            print("Done. Took {:.3f}s".format(toc - tic))
-            if self.cache_directory is not None:
-                rays.save(self.cache_directory)
+        rays = self.__get_rays(ray_count, load_rays_from_cache=load_rays_from_cache)
 
         blur_constant = 4.
 
@@ -108,44 +148,44 @@ class Main:
         thetas = torch.cat((self.true_theta.value[0:5].repeat(theta_count, 1), torch.linspace(-torch.pi, torch.pi, theta_count)[:, None]), dim=1)
         landscapes = torch.zeros(m, theta_count)
         average_sum_ns = torch.zeros(m)
-        print("Evaluating {} landscapes...".format(m))
+        landscapes_clipped = landscapes.clone()
+        average_sum_ns_clipped = average_sum_ns.clone()
+        print("Evaluating {} landscapes with alpha = {:.3f}, blur constant = {:.3f}...".format(m, alpha, blur_constant))
         tic = time.time()
         for j in range(m):
-            # alpha = .4 * 2.**j
 
             # ss_clipped = ss.clone()
             # ssn_clipped = 0.
 
-            print("\tPerforming {} evaluations for alpha = {:.2f}...".format(theta_count, alpha))
+            print("\tPerforming {} evaluations for {} rays...".format(theta_count, ray_subset_count))
             _tic = time.time()
             for i in range(theta_count):
-
                 similarity, sum_n = rays.evaluate(Ray.Transformation(thetas[i]),
                                                   alpha=torch.tensor([alpha]),
                                                   blur_constant=torch.tensor([blur_constant]),
                                                   clip=False,
-                                                  ray_count=ray_subset_count,
-                                                  debug_plots=abs(thetas[i, 5] - self.true_theta.value[5]) < 0.04)
+                                                  ray_count=ray_subset_count)
                 # print(s, sn)
                 landscapes[j, i] = similarity.item()
                 average_sum_ns[j] += sum_n
 
-                # s_clipped, sn_clipped = rays.evaluate(Ray.Transformation(thetas[i]),
-                #                                       alpha=torch.tensor([alpha]),
-                #                                       blur_constant=torch.tensor([blur_constant]),
-                #                                       clip=True,
-                #                                       ray_count=ray_subset_count)
-                # ss_clipped[i] = s_clipped.item()
-                # ssn_clipped += sn_clipped
+                similarity_clipped, sum_n_clipped = rays.evaluate(Ray.Transformation(thetas[i]),
+                                                                  alpha=torch.tensor([alpha]),
+                                                                  blur_constant=torch.tensor([blur_constant]),
+                                                                  clip=True,
+                                                                  ray_count=ray_subset_count)
+                landscapes_clipped[j, i] = similarity_clipped.item()
+                average_sum_ns_clipped += sum_n_clipped
 
             _toc = time.time()
             print("\tDone. Took {:.3f}s".format(_toc - _tic))
 
             average_sum_ns[j] /= float(theta_count)
-
-            # asn_clipped = ssn_clipped / float(thetas.size()[0])
+            average_sum_ns_clipped[j] /= float(theta_count)
 
             alpha *= 2.
+
+            #ray_subset_count = (2 * ray_subset_count) // 3
 
         toc = time.time()
         print("Done. Took {:.3f}s".format(toc - tic))
@@ -153,10 +193,9 @@ class Main:
         _, axes = plt.subplots()
 
         for j in range(m):
-            colour = cmap(float(j) / float(m - 1))
+            colour = cmap(float(j) / float(m - 1) if m > 1 else 0.5)
             axes.plot(thetas[:, 5], landscapes[j], color=colour, linestyle='-')
-
-            # axes.plot(thetas[:, 5], ss_clipped, label="clipped, av. sum n = {:.3f}".format(asn_clipped), color=colour, linestyle='--')
+            axes.plot(thetas[:, 5], landscapes_clipped[j], label="clipped, av. sum n = {:.3f}".format(average_sum_ns_clipped[j]), color=colour, linestyle='--')
 
         axes.vlines(self.true_theta.value[5].item(), -1., axes.get_ylim()[1])
 
@@ -230,13 +269,14 @@ if __name__ == "__main__":
 
     # device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     dev = torch.device('cpu')
+    drr_size = torch.tensor([1000, 1000])
 
     if load_cached:
         main = Main.load("two_d_three_d/cache", device=dev)
     else:
         main = Main.new_drr_registration(ct_path,
                                          device=dev,
-                                         image_size=torch.tensor([1000, 1000]),
+                                         image_size=drr_size,
                                          source_position=torch.tensor([0., 0., 11.]),
                                          drr_alpha=2000.,
                                          cache_directory="two_d_three_d/cache")

@@ -60,7 +60,7 @@ def grid_sample2d(data: torch.Tensor, positions: torch.Tensor) -> Tuple[torch.Te
     :param positions: N x M x 2 matrix of positions
     :return:
     """
-    positions_transformed = .5 * (positions + 1.) * (torch.tensor(data.size(), dtype=torch.float32, device=data.device) - 1.)
+    positions_transformed = .5 * (positions.flip(-1) + 1.) * (torch.tensor(data.size(), dtype=torch.float32, device=data.device) - 1.)
     i0j0s = torch.floor(positions_transformed.clone().detach()).type(torch.int64)
     fs = positions_transformed - i0j0s.type(torch.float32)
     with_zero = torch.cat((torch.zeros(1, data.size()[1], device=data.device), data))

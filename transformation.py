@@ -77,12 +77,15 @@ class SE3(Transformation):
         return self.value
 
     def inverse(self):
-        return SE3(-self.value)
+        r = kornia.geometry.conversions.axis_angle_to_rotation_matrix(self.value[None, 3:])[0]
+        t = self.value[:3]
+        t_inv = -torch.matmul(r.t(), t)
+        return SE3(torch.cat((t_inv, -self.value[3:])))
 
     def get_matrix(self) -> torch.Tensor:
         r = kornia.geometry.conversions.axis_angle_to_rotation_matrix(self.value[None, 3:])[0]
         t = self.value[:3]
-        return torch.cat((torch.cat((torch.transpose(r, 1, 0), t[None, :])), torch.tensor([0., 0., 0., 1.])[:, None]), dim=1)
+        return torch.cat((torch.cat((r.t(), t[None, :])), torch.tensor([0., 0., 0., 1.])[:, None]), dim=1)
 
     def enable_grad(self):
         self.value.grad = torch.zeros_like(self.value)
