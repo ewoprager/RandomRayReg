@@ -133,7 +133,7 @@ def grid_sample3d(data: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:
     #return ret #, weights
 
 
-def weighted_zero_normalised_cross_correlation(xs: torch.Tensor, ys: torch.Tensor, ns: torch.Tensor):
+def weighted_zero_normalised_cross_correlation(xs: torch.Tensor, ys: torch.Tensor, ns: torch.Tensor) -> torch.Tensor:
     """
     :param xs: a tensor of values
     :param ys: a tensor of values

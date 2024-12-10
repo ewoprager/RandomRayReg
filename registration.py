@@ -52,13 +52,12 @@ class Registration:
                      alpha: float,
                      image_size: torch.Tensor):
         """
-        :param theta: Transformation of the DRR, of type `self.ray.Transformation`
+        :param theta: Transformation of the DRR, of type `self.ray_type.Transformation`
         :return: A DRR through the stored CT volume at the given transformation, `theta`.
         """
         untransformed_rays = self.ray_type.generate_true_untransformed(image_size, self.source_position, device=self.volume.data.device)
         drr_rays = self.ray_type.transform(untransformed_rays, theta.inverse())
         drr_data = self.volume.integrate(drr_rays, alpha=alpha)
-        drr_data[drr_data.isnan()] = 0.
 
         ## for debugging DRR generation; the produced plot should match the DRR image
         #positions, _ = self.ray_type.xy_plane_intersections(untransformed_rays)

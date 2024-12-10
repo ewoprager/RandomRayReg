@@ -2,6 +2,7 @@ import torch
 import time
 import matplotlib.pyplot as plt
 from typing import Tuple, Callable
+import debug
 
 
 def quantify_correlation(function: Callable[[float], float],
@@ -12,27 +13,21 @@ def quantify_correlation(function: Callable[[float], float],
     inputs = torch.linspace(domain[0], domain[1], divisions)
     samples = torch.zeros(divisions, sample_count)
 
-    print("Taking {} samples ({} samples in each of {} divisions of the domain)...".format(divisions * sample_count, sample_count, divisions))
-    tic = time.time()
+    debug.tic("Taking {} samples ({} samples in each of {} divisions of the domain)".format(divisions * sample_count, sample_count, divisions))
     for d in range(divisions):
         for i in range(sample_count):
             samples[d, i] = function(inputs[d].item())
-    toc = time.time()
-    print("Done; took {:.3f}s".format(toc - tic))
+    debug.toc()
 
-    print("Evaluating means and standard deviations...")
-    tic = time.time()
+    debug.tic("Evaluating means and standard deviations")
     stds, means = torch.std_mean(samples, dim=-1)
-    toc = time.time()
-    print("Done; took {:.3f}s".format(toc - tic))
+    debug.toc()
 
-    print("Evaluating correlation coefficient...")
-    tic = time.time()
+    debug.tic("Evaluating correlation coefficient")
     xs = inputs[:, None].repeat(1, sample_count).reshape(1, divisions * sample_count)
     ys = samples.reshape(1, divisions * sample_count)
     cc = torch.corrcoef(torch.cat((xs, ys)))
-    toc = time.time()
-    print("Done; took {:.3f}s".format(toc - tic))
+    debug.toc()
 
     ret = cc[0, 1].item()
 

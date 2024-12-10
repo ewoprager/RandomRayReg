@@ -92,7 +92,9 @@ class Volume:
         for i in range(n):
             ret += self.samples(ps)
             ps += deltas
-        return 1. - torch.exp(-ret / (alpha * float(n)))
+        ret = 1. - torch.exp(-ret / (alpha * float(n)))
+        ret[ret.isnan()] = 0.
+        return ret
 
     # def display(self, axes):
     #     X, Y = np.meshgrid(np.linspace(-1., 1., self.size[0], endpoint=True), np.linspace(-1., 1., self.size[1], endpoint=True))
@@ -130,6 +132,10 @@ class Image:
         #weights = (1. - fs) * torch.logical_not(i0s_out).type(torch.float32) + fs * torch.logical_not(i1s_out).type(torch.float32)
 
         return ret, weights, positions
+
+    def downsample(self, factor: int):
+        down_sampler = torch.nn.AvgPool2d(factor)
+        return Image(down_sampler(self.data[None, :, :])[0])
 
     def display(self, axes):
         xs, ys = np.meshgrid(np.linspace(-1., 1., self.data.size()[0], endpoint=True), np.linspace(-1., 1., self.data.size()[1], endpoint=True))

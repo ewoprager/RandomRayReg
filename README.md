@@ -6,6 +6,17 @@ The analogous 1D/2D image registration task is also implemented.
 
 See [RandomRays.pdf](RandomRays.pdf) for a detailed motivation, derivation and explanation.
 
+
+# Setup
+
+Developed with `Python 3.12.4`.
+
+Install requirements with
+```bash
+pip install -r requirements.txt
+```
+
+
 # Modules
 
 ### `tools`
@@ -55,6 +66,38 @@ Classes for holding 1D and 2D images, with corresponding sampling with rays.
 
 # Scripts
 
+## `two_d_three_d.main`
+
+Sets up a 2D/3D registration problem with workflows for
+- checking the match between the transformed pre-calculated rays and the fixed image
+- visualising the optimisation landscape
+- qualitatively and quantitatively analysing the shape of the optimisation landscape for this method and the canonical
+method of registering down-sampled DRRs
+- registering using an optimiser.
+
+### Example output for  `plot_landscape`:
+
+The following plots the (estimated) similarity between DRR and fixed image against a single rotational parameter of the
+SE3 transformation, where the central value results in an identical transformation to that of the fixed image.
+
+The solid lines are generated using pre-calculated random rays. Each colour represents a different number of rays,
+resulting in different total computation times for the 200 values. The hyperparameter `alpha` is set for each number
+of rays such that the sum of pair weights is approximately `1000`, and the hyperparameter `blur_constant` is `4`.
+
+The dashed lines are generated using the standard ('canonical') method of generating a down-sampled DRR to compare with
+a down-sampled version of the fixed image. Each colour represents a different scale of down-sampling, resulting in
+different total computation times for the 200 values.
+
+The total computation times for each series are shown in seconds in the legend.
+
+![canonical_comparison.png](two_d_three_d/plots/canonical_comparison.png)
+
+Ray counts / down-sample factors:
+- 0: 500,000 pre-calculated rays / down-sampled by 16
+- 1: 55,555 pre-calculated rays / down-sampled by 48
+- 2: 6172 pre-calculated rays / down-sampled by 144
+
+
 ## `one_d_two_d.main`
 
 Sets up a registration problem and implements workflows for
@@ -90,11 +133,3 @@ The WZNCC and orientation developed as follows over the course of the optimisati
 ![optimisation.png](one_d_two_d/plots/optimisation.png)
 
 
-# Setup
-
-Developed with `Python 3.12.4`.
-
-Install requirements with
-```bash
-pip install -r requirements.txt
-```
