@@ -9,6 +9,7 @@ import time
 from two_d_three_d.data import Ray, Volume, Image
 import tools
 from random_rays import RandomRays, Registration
+import correlation_measure
 
 
 class Main:
@@ -178,7 +179,7 @@ class Main:
                 average_sum_ns_clipped += sum_n_clipped
 
             _toc = time.time()
-            print("\tDone. Took {:.3f}s".format(_toc - _tic))
+            print("\tDone; took {:.3f}s.".format(_toc - _tic))
 
             average_sum_ns[j] /= float(theta_count)
             average_sum_ns_clipped[j] /= float(theta_count)
@@ -188,7 +189,7 @@ class Main:
             #ray_subset_count = (2 * ray_subset_count) // 3
 
         toc = time.time()
-        print("Done. Took {:.3f}s".format(toc - tic))
+        print("Done; took {:.3f}s.".format(toc - tic))
 
         _, axes = plt.subplots()
 
@@ -205,55 +206,152 @@ class Main:
         plt.ylabel("-WZNCC")
         plt.show()
 
-    def optimise(self):
-        print("True theta:", -self.true_theta.value.item())
+    def plot_distance_correlation(self,
+                                  point_count: int,
+                                  *,
+                                  load_rays_from_cache: bool=True):
+        assert (self.true_theta is not None), "Cannot plot distance correlation with no ground truth alignment"
 
-        alpha = 1.
-        ray_density = 100.
+        m = 5
+
+        alpha = .2
+
+        ray_count = 1000000
+        ray_subset_count = ray_count
+
+        rays = self.__get_rays(ray_count, load_rays_from_cache=load_rays_from_cache)
+
         blur_constant = 4.
 
-        ray_count = int(np.ceil(torch.norm(self.registration.source_position) * ray_density * np.sqrt(np.pi) / alpha))
-        rays = RandomRays(self.registration, ray_count=ray_count)
+        print("Plotting for {} values of alpha...".format(m))
+        tic = time.time()
+        for j in range(m):
+            distances = torch.zeros(point_count)
+            nwznccs = torch.zeros(point_count)
+            theta = Ray.Transformation()
+            print("\tEvaluating {} random points for alpha = {:.3f}...".format(point_count, alpha))
+            _tic = time.time()
+            for i in range(point_count):
+                theta.randomise()
+                similarity, _ = rays.evaluate(theta,
+                                              alpha=torch.tensor([alpha]),
+                                              blur_constant=torch.tensor([blur_constant]),
+                                              ray_count=ray_subset_count)
+                distances[i] = self.true_theta.distance(theta)
+                nwznccs[i] = similarity.item()
+
+            _toc = time.time()
+            print("\tDone; took {:.3f}s.".format(_toc - _tic))
+
+            cc = torch.corrcoef(torch.cat((distances[None, :], nwznccs[None, :])))
+
+            plt.scatter(distances, nwznccs, s=.3)
+            plt.xlabel("Riemann distance")
+            plt.ylabel("-WZNCC")
+            plt.title("alpha = {:.3f}; correlation = {}".format(alpha, cc[0, 1]))
+            plt.show()
+
+
+            print("\tCorrelation coefficient = {}".format(cc))
+
+            alpha *= 1.5
+        toc = time.time()
+        print("Done; took {:.3f}s.".format(toc - tic))
+
+    def quantify_distance_correlation(self, load_rays_from_cache: bool=True):
+        assert (self.true_theta is not None), "Cannot quantify distance correlation with no ground truth alignment"
+
+        def se3_from_distance(distance: float) -> Ray.Transformation:
+            angle = distance * torch.rand(1)
+            r = angle * torch.nn.functional.normalize(torch.rand(1, 3) - .5)
+            norm_t = torch.sqrt(distance * distance - angle * angle)
+            t = norm_t * torch.nn.functional.normalize(torch.rand(1, 3) - .5)
+            return Ray.Transformation(torch.cat((t, r), dim=-1)[0])
+
+        alpha = 1.
+        blur_constant = 4.
+        ray_count = 1000000
+        ray_subset_count = ray_count
+
+        rays = self.__get_rays(ray_count, load_rays_from_cache=load_rays_from_cache)
+
+        def similarity_from_distance(distance: float) -> float:
+            theta = self.true_theta.compose(se3_from_distance(distance))
+            similarity, _ = rays.evaluate(theta,
+                                          alpha=torch.tensor([alpha]),
+                                          blur_constant=torch.tensor([blur_constant]),
+                                          ray_count=ray_subset_count)
+            return similarity.item()
+
+        cc = correlation_measure.quantify_correlation(similarity_from_distance, (0., 2.5))
+        print("Correlation coefficient = {:.3f}".format(cc))
+
+
+    def optimise(self):
+        print("True theta:", -self.true_theta.value)
+
+        alpha = 2.
+        # ray_density = 100.
+        blur_constant = 4.
+
+        # ray_count = int(np.ceil(torch.norm(self.registration.source_position) * ray_density * np.sqrt(np.pi) / alpha))
+
+        ray_count = 1000000
+
+        rays = self.__get_rays(ray_count, load_rays_from_cache=True)
 
         thetas = []
-        ss = []
+        similarities = []
         theta = Ray.Transformation()
         theta.randomise()
-        optimiser = torch.optim.SGD([theta.value], lr=1.5, momentum=0.75)
-        for i in range(50):
-            def closure():
-                optimiser.zero_grad()
-                thetas.append(tools.fix_angle(theta.value).item())
-                s, _ = rays.evaluate_with_grad(theta,
-                                               alpha=torch.tensor([alpha]),
-                                               blur_constant=torch.tensor([blur_constant]))
-                ss.append(s.item())
-                return s
-
-            optimiser.step(closure)
-        print("Final theta:", tools.fix_angle(theta.value))
 
         _, axes = plt.subplots()
-        self.registration.generate_drr(theta).display(axes)
-        plt.title("DRR at final orientation = {:.3f} (simulated X-ray intensity)".format(theta.value.item()))
+        self.registration.generate_drr(theta, alpha=self.drr_alpha, image_size=torch.tensor([300, 300])).display(axes)
+        plt.axis('square')
+        plt.title("DRR at initial orientation = {} (simulated X-ray intensity)".format(theta.value))
         plt.show()
 
-        error = tools.fix_angle(theta.value + self.true_theta.value)
-        print("Distance: ", torch.abs(error).item())
+        optimiser = torch.optim.SGD([theta.value], lr=0.005, momentum=0.9, differentiable=True)
+        print("Optimising...")
+        tic = time.time()
+        for i in range(350):
+            def closure():
+                optimiser.zero_grad()
+                thetas.append(theta.value)
+                similarity, _ = rays.evaluate_with_grad(theta,
+                                                        alpha=torch.tensor([alpha]),
+                                                        blur_constant=torch.tensor([blur_constant]))
+                similarities.append(similarity.item())
+                print("\tStep {}; similarity = {:.3f} at theta distance = {:.3f}".format(i, similarity.item(), self.true_theta.distance(theta).item()))
+                return similarity
+
+            optimiser.step(closure)
+        toc = time.time()
+        print("Done; took {:.3f}s.".format(toc - tic))
+        print("Final theta:", theta.value)
+
+        _, axes = plt.subplots()
+        self.registration.generate_drr(theta, alpha=self.drr_alpha, image_size=torch.tensor([300, 300])).display(axes)
+        plt.axis('square')
+        plt.title("DRR at final orientation = {} (simulated X-ray intensity)".format(theta.value))
+        plt.show()
+
+        # error = theta.value + self.true_theta.value
+        # print("Distance: ", torch.abs(error).item())
 
         fig, ax1 = plt.subplots()
         ax1.set_xlabel("Optimisation step")
 
-        colour = 'blue'
-        ax1.plot(thetas, label="orientation", color=colour)
-        ax1.set_ylabel("orientation (radians)", color=colour)
+        colour = 'green'
+        ax1.plot(similarities, color=colour)
+        ax1.set_ylabel("-WZNCC", color=colour)
         ax1.tick_params(axis='y', labelcolor=colour)
 
-        ax2 = ax1.twinx()
-        colour = 'green'
-        ax2.plot(ss, color=colour)
-        ax2.set_ylabel("-WZNCC", color=colour)
-        ax2.tick_params(axis='y', labelcolor=colour)
+        # colour = 'blue'
+        # ax2 = ax1.twinx()
+        # ax2.plot(thetas, label="orientation", color=colour)
+        # ax2.set_ylabel("orientation (radians)", color=colour)
+        # ax2.tick_params(axis='y', labelcolor=colour)
 
         plt.title("Optimisation process")
         plt.legend()
@@ -281,8 +379,10 @@ if __name__ == "__main__":
                                          drr_alpha=2000.,
                                          cache_directory="two_d_three_d/cache")
 
-    main.plot_landscape(load_rays_from_cache=load_cached)
+    #main.plot_landscape(load_rays_from_cache=load_cached)
 
-    exit()
+    #main.optimise()
 
-    main.optimise()
+    # main.plot_distance_correlation(10000)
+
+    main.quantify_distance_correlation()

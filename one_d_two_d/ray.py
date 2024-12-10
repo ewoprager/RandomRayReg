@@ -14,7 +14,7 @@ class Ray:
 
     @staticmethod
     def transform(rays: torch.Tensor, theta: Transformation) -> torch.Tensor:
-        t = theta.get_matrix()
+        t = theta.get_matrix().t()
         t2 = torch.cat((torch.cat((t, torch.zeros_like(t))), torch.cat((torch.zeros_like(t), t))), dim=1)
         return torch.matmul(rays, t2)
 

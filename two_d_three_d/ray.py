@@ -13,7 +13,7 @@ class Ray:
 
     @staticmethod
     def transform(rays: torch.Tensor, theta: Transformation) -> torch.Tensor:
-        t = theta.get_matrix().to(rays.device)
+        t = theta.get_matrix().t().to(rays.device)
         t2 = torch.cat((torch.cat((t, torch.zeros_like(t))), torch.cat((torch.zeros_like(t), t))), dim=1)
         ray_count = rays.size()[0]
         rays_homogeneous = torch.cat((rays[:, 0:3], torch.ones(ray_count, device=rays.device)[:, None], rays[:, 3:6], torch.zeros(ray_count, device=rays.device)[:, None]), dim=1)
