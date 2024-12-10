@@ -16,54 +16,6 @@ Install requirements with
 pip install -r requirements.txt
 ```
 
-
-# Modules
-
-### `tools`
-
-Some simple mathematical operations on images and vectors.
-
-
-### `registration`
-
-A class holding information about a registration problem.
-
-
-### `random_rays`
-
-A class implementing functionality for solving a registration problem using random rays.
-
-
-## `two_d_three_d`
-
-### `two_d_three_d.ray`
-
-A ray is stored as a row of a 6-column tensor. The first 3 values are a position in CT space through which the ray
-passes, and the final 3 values are a unit-length direction vector of the ray.
-
-This module contains some basic functions for manipulating rays stored as rows of `torch.Tensor`s.
-
-
-### `two_d_three_d.data`
-
-Classes for holding 2D and 3D images, with corresponding sampling with rays.
-
-
-## `one_d_two_d`
-
-### `one_d_two_d.ray`
-
-A ray is stored as a row of a 4-column tensor. The first 2 values are a position in CT space through which the ray
-passes, and the final 2 values are a unit-length direction vector of the ray.
-
-This module contains some basic functions for manipulating rays stored as rows of `torch.Tensor`s.
-
-
-### `one_d_two_d.data`
-
-Classes for holding 1D and 2D images, with corresponding sampling with rays.
-
-
 # Scripts
 
 ## `two_d_three_d.main`
@@ -131,5 +83,65 @@ in the same local minimum as the global minimum. A DRR taken at this orientation
 The WZNCC and orientation developed as follows over the course of the optimisation:
 
 ![optimisation.png](one_d_two_d/plots/optimisation.png)
+
+
+# Modules
+
+### `tools`
+
+Some simple mathematical operations on images and vectors.
+
+
+### `registration`
+
+A class holding information about a registration problem.
+
+
+### `random_rays`
+
+A class implementing functionality for solving a registration problem using random rays.
+
+
+### `debug`
+
+Simple tool for printing out progress through script, and timing tasks.
+
+
+### `correlation_measure`
+
+Tool for measuring the correlation between the input and output of a random function, where the domain of the function
+is sampled evenly through a particular range.
+
+
+## `two_d_three_d`
+
+### `two_d_three_d.ray`
+
+A ray is stored as a row of a 6-column tensor. The first 3 values are a position in CT space through which the ray
+passes, and the final 3 values are a unit-length direction vector of the ray.
+
+This module contains some basic functions for manipulating rays stored as rows of `torch.Tensor`s.
+
+
+### `two_d_three_d.data`
+
+Classes for holding 2D and 3D images, with corresponding sampling with rays.
+
+
+## `one_d_two_d`
+
+### `one_d_two_d.ray`
+
+A ray is stored as a row of a 4-column tensor. The first 2 values are a position in CT space through which the ray
+passes, and the final 2 values are a unit-length direction vector of the ray.
+
+This module contains some basic functions for manipulating rays stored as rows of `torch.Tensor`s.
+
+
+### `one_d_two_d.data`
+
+Classes for holding 1D and 2D images, with corresponding sampling with rays.
+
+
 
 

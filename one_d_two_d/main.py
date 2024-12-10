@@ -12,6 +12,7 @@ class Main:
     def __init__(self, image_size: int, volume_size: int):
         self.image_size = image_size
         self.volume_size = volume_size
+        self.drr_alpha = 0.5
 
         # CT space is 2D, exists between (-1,-1) and (1,1)
         self.volume_data = torch.rand(volume_size, volume_size)
@@ -25,7 +26,7 @@ class Main:
         self.volume = Volume(self.volume_data)
 
         self.registration = Registration(Ray, Image, self.volume, source_position=torch.tensor([3., 0.]))
-        self.true_theta = self.registration.set_image_from_random_drr(image_size=torch.tensor([image_size]))
+        self.true_theta = self.registration.set_image_from_random_drr(image_size=torch.tensor([image_size]), drr_alpha=self.drr_alpha)
 
         # display drr target
         _, ax0 = plt.subplots()
@@ -136,7 +137,7 @@ class Main:
         print("Final theta:", tools.fix_angle(theta.value))
 
         _, axes = plt.subplots()
-        self.registration.generate_drr(theta, image_size=torch.tensor([self.image_size])).display(axes)
+        self.registration.generate_drr(theta, image_size=torch.tensor([self.image_size]), alpha=self.drr_alpha).display(axes)
         plt.title("DRR at final orientation = {:.3f} (simulated X-ray intensity)".format(theta.value.item()))
         plt.show()
 

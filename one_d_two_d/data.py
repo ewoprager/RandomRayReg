@@ -53,7 +53,7 @@ class Image:
         self.data = data
         self.size = data.size()
 
-    def samples(self, rays: torch.Tensor, blur_sigma: Union[torch.Tensor, None]=None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def samples(self, rays: torch.Tensor, blur_sigma: Union[torch.Tensor, None]=None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Interpolates samples from the stored image where the given rays intersect the y-axis.
         :param rays: tensor of rays
@@ -63,7 +63,8 @@ class Image:
         data = self.data if blur_sigma is None else tools.gaussian_blur1d(self.data, blur_sigma.item())
         positions = Ray.y_axis_intersections(rays)
 
-        return tools.grid_sample1d(data, positions)
+        ret, weights = tools.grid_sample1d(data, positions)
+        return ret, weights, positions
 
     def display(self, axes):
         axes.pcolormesh(self.data[None, :], cmap='gray')
