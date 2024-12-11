@@ -33,21 +33,22 @@ The following plots the (estimated) similarity between DRR and fixed image again
 SE3 transformation, where the central value results in an identical transformation to that of the fixed image.
 
 The solid lines are generated using pre-calculated random rays. Each colour represents a different number of rays,
-resulting in different total computation times for the 200 values. The hyperparameter `alpha` is set for each number
-of rays such that the sum of pair weights is approximately `1000`, and the hyperparameter `blur_constant` is `4`.
+resulting in different total computation times for the 50 values. The hyperparameter `alpha` is set for each number
+of rays such that the sum of pair weights is approximately `5000`, and the hyperparameter `blur_constant` is `1`.
 
 The dashed lines are generated using the standard ('canonical') method of generating a down-sampled DRR to compare with
 a down-sampled version of the fixed image. Each colour represents a different scale of down-sampling, resulting in
-different total computation times for the 200 values.
+different total computation times for the 50 values.
 
 The total computation times for each series are shown in seconds in the legend.
 
 ![canonical_comparison.png](two_d_three_d/plots/canonical_comparison.png)
 
 Ray counts / down-sample factors:
-- 0: 500,000 pre-calculated rays / down-sampled by 16
-- 1: 55,555 pre-calculated rays / down-sampled by 48
-- 2: 6172 pre-calculated rays / down-sampled by 144
+- 0: 100,000,000 pre-calculated rays / full resolution
+- 1: 6,250,000 pre-calculated rays / down-sampled by 4
+- 2: 390,625 pre-calculated rays / down-sampled by 16
+- 3: 24,414 pre-calculated rays / down-sampled by 64
 
 
 ## `one_d_two_d.main`

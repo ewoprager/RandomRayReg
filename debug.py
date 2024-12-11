@@ -34,3 +34,8 @@ def toc(message: Union[str, None]=None):
         message = ". " + message
 
     print((depth - 1) * "\t" + "> Done; took {:.3f}s".format(toc_ - _tic_stack.pop()) + message)
+
+
+def get_indent() -> str:
+    global _tic_stack
+    return len(_tic_stack) * "\t"

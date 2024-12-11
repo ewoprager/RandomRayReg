@@ -1,10 +1,11 @@
 import sys, os
-import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from typing import Union
 import time
+import warnings
+from tqdm import tqdm
 
 from two_d_three_d.data import Ray, Volume, Image
 import tools
@@ -117,7 +118,7 @@ class Main:
 
         rays = self.__get_rays(ray_count, load_rays_from_cache=load_rays_from_cache)
 
-        similarity, sum_n = rays.evaluate(self.true_theta,
+        similarity, weight_sum = rays.evaluate(self.true_theta,
                                           alpha=torch.tensor([alpha]),
                                           blur_constant=torch.tensor([blur_constant]),
                                           clip=False,
@@ -126,36 +127,36 @@ class Main:
 
         print("Similarity: {:.3f}", similarity)
 
-        print("Sum n = {:.3f}", sum_n)
+        print("Sum n = {:.3f}", weight_sum)
 
     def plot_landscape(self, *, load_rays_from_cache: bool=True):
         assert (self.true_theta is not None), "Cannot plot landscape with no ground truth alignment"
 
-        m: int = 3
+        m: int = 4
         # alpha = 3.
-        ray_density = 1000.
-        # ray_count = int(np.ceil(4. * (torch.norm(self.registration.source_position) / alpha).square() * ray_density))
-        ray_count = 500000
+        expected_weight_sum = 5000.
+        # ray_count = int(np.ceil(4. * (torch.norm(self.registration.source_position) / alpha).square() * expected_weight_sum))
+        ray_count = 100000000
         ray_subset_count = ray_count
 
         rays = self.__get_rays(ray_count, load_rays_from_cache=load_rays_from_cache)
 
-        blur_constant = 4.
+        blur_constant = 1.
 
         cmap = mpl.colormaps['viridis']
 
-        theta_count = 200
+        theta_count = 50
         thetas = torch.cat((self.true_theta.value[0:5].repeat(theta_count, 1), torch.linspace(-torch.pi, torch.pi, theta_count)[:, None]), dim=1)
 
         # for analysing new method
         landscapes = torch.zeros(m, theta_count)
-        average_sum_ns = torch.zeros(m)
+        average_weight_sums = torch.zeros(m)
         # landscapes_clipped = landscapes.clone()
-        # average_sum_ns_clipped = average_sum_ns.clone()
+        # average_weight_sums_clipped = average_weight_sums.clone()
 
         # for analysing canonical method
         landscapes_canonical = torch.zeros(m, theta_count)
-        downsample_factor = 16
+        canonical_mip_level = 0
 
         # for timing both
         times = torch.zeros(m)
@@ -167,21 +168,19 @@ class Main:
             # ss_clipped = ss.clone()
             # ssn_clipped = 0.
 
-            alpha = torch.norm(self.registration.source_position) * torch.sqrt(torch.tensor([2. * ray_density / float(ray_subset_count)]))
-
-            down_sampled = self.registration.image.downsample(downsample_factor)
+            alpha = torch.norm(self.registration.source_position) * torch.sqrt(torch.tensor([2. * expected_weight_sum / float(ray_subset_count)]))
 
             debug.tic("Performing {} evaluations for {} rays".format(theta_count, ray_subset_count))
-            for i in range(theta_count):
+            for i in tqdm(range(theta_count), desc=debug.get_indent()):
                 tic = time.time()
-                similarity, sum_n = rays.evaluate(Ray.Transformation(thetas[i]),
+                similarity, weight_sum = rays.evaluate(Ray.Transformation(thetas[i]),
                                                   alpha=torch.tensor([alpha]),
                                                   blur_constant=torch.tensor([blur_constant]),
                                                   ray_count=ray_subset_count)
                 times[j] += time.time() - tic
                 # print(s, sn)
                 landscapes[j, i] = similarity.item()
-                average_sum_ns[j] += sum_n
+                average_weight_sums[j] += weight_sum
 
                 # similarity_clipped, sum_n_clipped = rays.evaluate(Ray.Transformation(thetas[i]),
                 #                                                   alpha=torch.tensor([alpha]),
@@ -189,20 +188,20 @@ class Main:
                 #                                                   clip=True,
                 #                                                   ray_count=ray_subset_count)
                 # landscapes_clipped[j, i] = similarity_clipped.item()
-                # average_sum_ns_clipped += sum_n_clipped
+                # average_weight_sums_clipped += sum_n_clipped
 
                 tic = time.time()
-                landscapes_canonical[j, i] = self.canonical(Ray.Transformation(thetas[i]), down_sampled)
+                landscapes_canonical[j, i] = self.canonical(Ray.Transformation(thetas[i]), self.registration.image.data[canonical_mip_level], volume_mip_level=canonical_mip_level)
                 times_canonical[j] += time.time() - tic
 
             debug.toc()
 
-            average_sum_ns[j] /= float(theta_count)
-            # average_sum_ns_clipped[j] /= float(theta_count)
+            average_weight_sums[j] /= float(theta_count)
+            # average_weight_sums_clipped[j] /= float(theta_count)
 
             # alpha *= 2.
-            ray_subset_count = ray_subset_count // 9
-            downsample_factor *= 3
+            ray_subset_count = ray_subset_count // 16
+            canonical_mip_level += 2
 
         debug.toc()
 
@@ -211,7 +210,7 @@ class Main:
         for j in range(m):
             colour = cmap(float(j) / float(m - 1) if m > 1 else 0.5)
             axes.plot(thetas[:, 5], landscapes[j], color=colour, linestyle='-', label="{}; {:.3f}s".format(j, times[j].item()))
-            # axes.plot(thetas[:, 5], landscapes_clipped[j], label="clipped, av. sum n = {:.3f}".format(average_sum_ns_clipped[j]), color=colour, linestyle='--')
+            # axes.plot(thetas[:, 5], landscapes_clipped[j], label="clipped, av. sum n = {:.3f}".format(average_weight_sums_clipped[j]), color=colour, linestyle='--')
             axes.plot(thetas[:, 5], landscapes_canonical[j], color=colour, linestyle='--', label="canonical {}; {:.3f}s".format(j, times_canonical[j].item()))
 
         axes.vlines(self.true_theta.value[5].item(), -1., axes.get_ylim()[1])
@@ -310,10 +309,10 @@ class Main:
         print("True theta:", -self.true_theta.value)
 
         alpha = 2.
-        # ray_density = 100.
+        # expected_weight_sum = 100.
         blur_constant = 4.
 
-        # ray_count = int(np.ceil(torch.norm(self.registration.source_position) * ray_density * np.sqrt(np.pi) / alpha))
+        # ray_count = int(np.ceil(torch.norm(self.registration.source_position) * expected_weight_sum * np.sqrt(np.pi) / alpha))
 
         ray_count = 1000000
 
@@ -325,7 +324,7 @@ class Main:
         theta.randomise()
 
         _, axes = plt.subplots()
-        self.registration.generate_drr(theta, alpha=self.drr_alpha, image_size=torch.tensor([300, 300])).display(axes)
+        Image(self.registration.generate_drr(theta, alpha=self.drr_alpha, image_size=torch.tensor([300, 300]))).display(axes)
         plt.axis('square')
         plt.title("DRR at initial orientation = {} (simulated X-ray intensity)".format(theta.value))
         plt.show()
@@ -350,7 +349,7 @@ class Main:
         print("Final theta:", theta.value)
 
         _, axes = plt.subplots()
-        self.registration.generate_drr(theta, alpha=self.drr_alpha, image_size=torch.tensor([300, 300])).display(axes)
+        Image(self.registration.generate_drr(theta, alpha=self.drr_alpha, image_size=torch.tensor([300, 300]))).display(axes)
         plt.axis('square')
         plt.title("DRR at final orientation = {} (simulated X-ray intensity)".format(theta.value))
         plt.show()
@@ -377,13 +376,17 @@ class Main:
         fig.tight_layout()
         plt.show()
 
-    def canonical(self, theta, fixed_image: Image) -> float:
+    def canonical(self,
+                  theta,
+                  fixed_image_data: torch.Tensor,
+                  *,
+                  volume_mip_level: int=0) -> float:
         assert (self.true_theta is not None), "Cannot assess similarity canonically with no ground truth alignment"
 
-        drr = self.registration.generate_drr(theta, alpha=self.drr_alpha, image_size=torch.tensor(fixed_image.data.size()))
+        drr = Image(self.registration.generate_drr(theta, alpha=self.drr_alpha, image_size=torch.tensor(fixed_image_data.size()), mip_level=volume_mip_level))
 
-        xs = fixed_image.data.flatten()
-        ys = drr.data.flatten()
+        xs = fixed_image_data.flatten()
+        ys = drr.data[0].flatten()
         return -tools.weighted_zero_normalised_cross_correlation(xs, ys, torch.ones_like(xs)).item()
 
     def quantify_distance_correlation_canonical(self) -> float:
@@ -396,14 +399,11 @@ class Main:
             t = norm_t * torch.nn.functional.normalize(torch.rand(1, 3) - .5)
             return Ray.Transformation(torch.cat((t, r), dim=-1)[0])
 
-
-        down_sampled = self.registration.image.downsample(12)
-
         debug.tic("Quantifying correlation for canonical method")
 
         def similarity_from_distance(distance: float) -> float:
             theta = self.true_theta.compose(se3_from_distance(distance))
-            similarity = self.canonical(theta, down_sampled)
+            similarity = self.canonical(theta, self.registration.image.data[3], volume_mip_level=3)
             return similarity
 
         cc = correlation_measure.quantify_correlation(similarity_from_distance, (0., 2.))
@@ -414,6 +414,7 @@ class Main:
 
 
 if __name__ == "__main__":
+    warnings.filterwarnings("ignore")
     ct_path = sys.argv[1]
     debug.init()
 

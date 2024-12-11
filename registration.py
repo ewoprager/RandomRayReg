@@ -2,6 +2,8 @@ import torch
 from typing import Union, TypeAlias
 import matplotlib.pyplot as plt
 
+import debug
+
 class Registration:
     """
     A 1D/2D or 2D/3D radiographic image registration task.
@@ -28,7 +30,9 @@ class Registration:
                                   drr_alpha: float):
         true_theta = self.ray_type.Transformation()
         true_theta.randomise()
-        self.set_image(self.generate_drr(true_theta, image_size=image_size, alpha=drr_alpha))
+        debug.tic("Generating new DRR at random theta = {}".format(true_theta))
+        self.set_image(self.image_type(self.generate_drr(true_theta, image_size=image_size, alpha=drr_alpha), generate_mip_levels=True))
+        debug.toc()
         return true_theta
 
     def set_image_from_drr(self,
@@ -37,7 +41,9 @@ class Registration:
                            image_size: torch.Tensor,
                            drr_alpha: float):
         assert (isinstance(theta, self.ray_type.Transformation)), "Invalid type of theta given"
-        self.set_image(self.generate_drr(theta, image_size=image_size, alpha=drr_alpha))
+        debug.tic("Generating new DRR at theta = {}".format(theta))
+        self.set_image(self.image_type(self.generate_drr(theta, image_size=image_size, alpha=drr_alpha), generate_mip_levels=True))
+        debug.toc()
 
     def save_image(self, cache_directory: str):
         torch.save(self.image, cache_directory + "/image.pt")
@@ -50,14 +56,15 @@ class Registration:
                      theta,
                      *,
                      alpha: float,
-                     image_size: torch.Tensor):
+                     image_size: torch.Tensor,
+                     mip_level: int=0) -> torch.Tensor:
         """
         :param theta: Transformation of the DRR, of type `self.ray_type.Transformation`
         :return: A DRR through the stored CT volume at the given transformation, `theta`.
         """
-        untransformed_rays = self.ray_type.generate_true_untransformed(image_size, self.source_position, device=self.volume.data.device)
+        untransformed_rays = self.ray_type.generate_true_untransformed(image_size, self.source_position, device=self.volume.data[mip_level].device)
         drr_rays = self.ray_type.transform(untransformed_rays, theta.inverse())
-        drr_data = self.volume.integrate(drr_rays, alpha=alpha)
+        drr_data = self.volume.integrate(drr_rays, alpha=alpha, mip_level=mip_level)
 
         ## for debugging DRR generation; the produced plot should match the DRR image
         #positions, _ = self.ray_type.xy_plane_intersections(untransformed_rays)
@@ -66,4 +73,4 @@ class Registration:
         #plt.show()
         ##
 
-        return self.image_type(drr_data.reshape(tuple(image_size)).t())
+        return drr_data.reshape(tuple(image_size)).t()
