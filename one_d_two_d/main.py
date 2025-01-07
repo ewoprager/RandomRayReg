@@ -26,7 +26,8 @@ class Main:
         self.volume = Volume(self.volume_data)
 
         self.registration = Registration(Ray, Image, self.volume, source_position=torch.tensor([3., 0.]))
-        self.true_theta = self.registration.set_image_from_random_drr(image_size=torch.tensor([image_size]), drr_alpha=self.drr_alpha)
+        self.true_theta = self.registration.set_image_from_random_drr(image_size=torch.tensor([image_size]),
+            drr_alpha=self.drr_alpha)
 
         # display drr target
         _, ax0 = plt.subplots()
@@ -41,19 +42,9 @@ class Main:
         plt.title("CT volume (X-ray attenuation coefficient)")
         plt.show()
 
-        # display volume, with rays colours according to fixed image brightness
-        # _, ax1 = plt.subplots()
-        # self.registration.volume.display(ax1)
-        # rays.plot_with_sampled_shading(ax1)
-        # ax1.set_ylim(-1., 1.)
-        # plt.show()
+        # display volume, with rays colours according to fixed image brightness  # _, ax1 = plt.subplots()  # self.registration.volume.display(ax1)  # rays.plot_with_sampled_shading(ax1)  # ax1.set_ylim(-1., 1.)  # plt.show()
 
-        # display volume, with rays coloured according to volume integral
-        # _, ax2 = plt.subplots()
-        # self.registration.volume.display(ax2)
-        # rays.plot_with_intensity_shading(ax2)
-        # ax2.set_ylim(-1., 1.)
-        # plt.show()
+        # display volume, with rays coloured according to volume integral  # _, ax2 = plt.subplots()  # self.registration.volume.display(ax2)  # rays.plot_with_intensity_shading(ax2)  # ax2.set_ylim(-1., 1.)  # plt.show()
 
     def plot_landscape(self):
         m: int = 3
@@ -75,17 +66,13 @@ class Main:
             ss_clipped = np.zeros_like(thetas)
             ssn_clipped = 0.
             for i in range(len(thetas)):
-                s, sn = rays.evaluate(Ray.Transformation(torch.tensor([thetas[i]])),
-                                      alpha=torch.tensor([alpha]),
-                                      blur_constant=torch.tensor([blur_constant]),
-                                      clip=False)
+                s, sn = rays.evaluate(Ray.Transformation(torch.tensor([thetas[i]])), alpha=torch.tensor([alpha]),
+                    blur_constant=torch.tensor([blur_constant]), clip=False)
                 ss[i] = s.item()
                 ssn += sn
 
                 s_clipped, sn_clipped = rays.evaluate(Ray.Transformation(torch.tensor([thetas[i]])),
-                                                      alpha=torch.tensor([alpha]),
-                                                      blur_constant=torch.tensor([blur_constant]),
-                                                      clip=True)
+                    alpha=torch.tensor([alpha]), blur_constant=torch.tensor([blur_constant]), clip=True)
                 ss_clipped[i] = s_clipped.item()
                 ssn_clipped += sn_clipped
 
@@ -93,11 +80,11 @@ class Main:
             asn_clipped = ssn_clipped / float(len(thetas))
             colour = cmap(float(j) / float(m - 1))
             axes.plot(thetas, ss,
-                      label="alpha = {:.3f}, {} rays, av. sum n = {:.3f}, bc = {:.3f}".format(alpha, ray_count, asn,
-                                                                                              blur_constant),
-                      color=colour, linestyle='-')
+                label="alpha = {:.3f}, {} rays, av. sum n = {:.3f}, bc = {:.3f}".format(alpha, ray_count, asn,
+                    blur_constant), color=colour, linestyle='-')
 
-            axes.plot(thetas, ss_clipped, label="clipped, av. sum n = {:.3f}".format(asn_clipped), color=colour, linestyle='--')
+            axes.plot(thetas, ss_clipped, label="clipped, av. sum n = {:.3f}".format(asn_clipped), color=colour,
+                linestyle='--')
 
         axes.vlines(-self.true_theta.value.item(), -1., axes.get_ylim()[1])
         # ray_density *= 2.
@@ -127,9 +114,8 @@ class Main:
             def closure():
                 optimiser.zero_grad()
                 thetas.append(tools.fix_angle(theta.value).item())
-                s, _ = rays.evaluate_with_grad(theta,
-                                               alpha=torch.tensor([alpha]),
-                                               blur_constant=torch.tensor([blur_constant]))
+                s, _ = rays.evaluate_with_grad(theta, alpha=torch.tensor([alpha]),
+                    blur_constant=torch.tensor([blur_constant]))
                 ss.append(s.item())
                 return s
 
@@ -137,7 +123,8 @@ class Main:
         print("Final theta:", tools.fix_angle(theta.value))
 
         _, axes = plt.subplots()
-        self.registration.generate_drr(theta, image_size=torch.tensor([self.image_size]), alpha=self.drr_alpha).display(axes)
+        self.registration.generate_drr(theta, image_size=torch.tensor([self.image_size]), alpha=self.drr_alpha).display(
+            axes)
         plt.title("DRR at final orientation = {:.3f} (simulated X-ray intensity)".format(theta.value.item()))
         plt.show()
 
@@ -162,7 +149,6 @@ class Main:
         plt.legend()
         fig.tight_layout()
         plt.show()
-
 
 
 if __name__ == "__main__":

@@ -5,10 +5,12 @@ import torch
 import tools
 from one_d_two_d.ray import Ray
 
+
 class Volume:
     """
     A 2D image that rays can be integrated along through
     """
+
     def __init__(self, data: torch.Tensor):
         self.data = data
         self.size = data.size()
@@ -18,9 +20,11 @@ class Volume:
         :param positions: a vector of 2D vectors, positions between (-1,-1) and (1,1)
         :return: vector of bi-linearly interpolated samples from the stored image at the given positions
         """
-        return torch.nn.functional.grid_sample(self.data[None, None, :, :], positions[None, None, :, :], align_corners=False)[0, 0, 0]
+        return \
+        torch.nn.functional.grid_sample(self.data[None, None, :, :], positions[None, None, :, :], align_corners=False)[
+            0, 0, 0]
 
-    def integrate(self, rays: torch.Tensor, alpha: float, n: int=200) -> torch.Tensor:
+    def integrate(self, rays: torch.Tensor, alpha: float, n: int = 200) -> torch.Tensor:
         """
         :param rays: tensor of rays to integrate along
         :param alpha: X-ray attenuation factor
@@ -40,7 +44,8 @@ class Volume:
         return 1. - torch.exp(-ret / (alpha * float(n)))
 
     def display(self, axes):
-        xs, ys = np.meshgrid(np.linspace(-1., 1., self.size[0], endpoint=True), np.linspace(-1., 1., self.size[1], endpoint=True))
+        xs, ys = np.meshgrid(np.linspace(-1., 1., self.size[0], endpoint=True),
+            np.linspace(-1., 1., self.size[1], endpoint=True))
         axes.pcolormesh(xs, ys, self.data, cmap='gray')
 
 
@@ -48,12 +53,13 @@ class Image:
     """
     A 1D image that can be sampled using rays
     """
-    def __init__(self,
-                 data: torch.Tensor):
+
+    def __init__(self, data: torch.Tensor):
         self.data = data
         self.size = data.size()
 
-    def samples(self, rays: torch.Tensor, blur_sigma: Union[torch.Tensor, None]=None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def samples(self, rays: torch.Tensor, blur_sigma: Union[torch.Tensor, None] = None) -> Tuple[
+        torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Interpolates samples from the stored image where the given rays intersect the y-axis.
         :param rays: tensor of rays

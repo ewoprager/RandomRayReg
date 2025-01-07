@@ -1,7 +1,6 @@
 import time
 from typing import Union
 
-
 _tic_stack: list[float]
 
 
@@ -18,7 +17,7 @@ def tic(message: str):
     _tic_stack.append(time.time())
 
 
-def toc(message: Union[str, None]=None):
+def toc(message: Union[str, None] = None):
     global _tic_stack
 
     toc_ = time.time()

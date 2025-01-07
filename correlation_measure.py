@@ -5,15 +5,13 @@ from typing import Tuple, Callable
 import debug
 
 
-def quantify_correlation(function: Callable[[float], float],
-                         domain: Tuple[float, float],
-                         *,
-                         divisions: int=20,
-                         sample_count: int=50) -> float:
+def quantify_correlation(function: Callable[[float], float], domain: Tuple[float, float], *, divisions: int = 20,
+                         sample_count: int = 50) -> float:
     inputs = torch.linspace(domain[0], domain[1], divisions)
     samples = torch.zeros(divisions, sample_count)
 
-    debug.tic("Taking {} samples ({} samples in each of {} divisions of the domain)".format(divisions * sample_count, sample_count, divisions))
+    debug.tic("Taking {} samples ({} samples in each of {} divisions of the domain)".format(divisions * sample_count,
+        sample_count, divisions))
     for d in range(divisions):
         for i in range(sample_count):
             samples[d, i] = function(inputs[d].item())

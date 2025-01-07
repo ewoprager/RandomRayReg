@@ -16,15 +16,10 @@ import debug
 
 class Main:
     __init_key = object()
-    def __init__(self,
-                 init_key,
-                 registration: Registration,
-                 *,
-                 source_position: torch.Tensor,
-                 drr_alpha: float,
-                 true_theta: Union[torch.Tensor, None]=None,
-                 cache_directory: Union[str, None]=None,
-                 save_or_load: Union[bool, None]=None):
+
+    def __init__(self, init_key, registration: Registration, *, source_position: torch.Tensor, drr_alpha: float,
+                 true_theta: Union[torch.Tensor, None] = None, cache_directory: Union[str, None] = None,
+                 save_or_load: Union[bool, None] = None):
         assert (init_key is self.__class__.__init_key), "Constructor is private"
         self.registration = registration
         self.source_position = source_position
@@ -49,29 +44,20 @@ class Main:
         plt.show()
 
     @classmethod
-    def new_drr_registration(cls,
-                             volume_path: str,
-                             *,
-                             device,
-                             image_size: torch.Tensor,
-                             source_position: torch.Tensor,
-                             drr_alpha: float,
-                             cache_directory: Union[str, None]=None):
+    def new_drr_registration(cls, volume_path: str, *, device, image_size: torch.Tensor, source_position: torch.Tensor,
+                             drr_alpha: float, cache_directory: Union[str, None] = None):
         volume = Volume.from_file(volume_path, device=device)
         if cache_directory is not None:
             volume.save(cache_directory)
 
         registration = Registration(Ray, Image, volume, source_position=source_position)
         true_theta = registration.set_image_from_random_drr(image_size=image_size, drr_alpha=drr_alpha)
-        return cls(cls.__init_key, registration, source_position=source_position, drr_alpha=drr_alpha, true_theta=true_theta, cache_directory=cache_directory, save_or_load=False)
+        return cls(cls.__init_key, registration, source_position=source_position, drr_alpha=drr_alpha,
+            true_theta=true_theta, cache_directory=cache_directory, save_or_load=False)
 
     @classmethod
-    def load(cls,
-             cache_directory: str,
-             *,
-             device,
-             regenerate_drr: bool=False,
-             image_size: Union[torch.Tensor, None]=None):
+    def load(cls, cache_directory: str, *, device, regenerate_drr: bool = False,
+             image_size: Union[torch.Tensor, None] = None):
         volume = Volume.load(cache_directory, device=device)
         source_position = torch.load(cache_directory + "/source_position.pt")
         registration = Registration(Ray, Image, volume, source_position=source_position)
@@ -94,9 +80,10 @@ class Main:
         else:
             registration.load_image(cache_directory)
 
-        return cls(cls.__init_key, registration, source_position=source_position, drr_alpha=drr_alpha, true_theta=true_theta, cache_directory=cache_directory, save_or_load=True)
+        return cls(cls.__init_key, registration, source_position=source_position, drr_alpha=drr_alpha,
+            true_theta=true_theta, cache_directory=cache_directory, save_or_load=True)
 
-    def __get_rays(self, ray_count, *, load_rays_from_cache: bool=False):
+    def __get_rays(self, ray_count, *, load_rays_from_cache: bool = False):
         if load_rays_from_cache and self.cache_directory is not None:
             ret = RandomRays.load(self.registration, self.cache_directory)
             if ret.ray_count >= ray_count:
@@ -109,8 +96,8 @@ class Main:
             ret.save(self.cache_directory)
         return ret
 
-    def check_match(self, *, load_rays_from_cache: bool=False):
-        assert(self.true_theta is not None), "Cannot check match with no ground truth alignment"
+    def check_match(self, *, load_rays_from_cache: bool = False):
+        assert (self.true_theta is not None), "Cannot check match with no ground truth alignment"
 
         alpha = .5
         blur_constant = 4.
@@ -118,25 +105,21 @@ class Main:
 
         rays = self.__get_rays(ray_count, load_rays_from_cache=load_rays_from_cache)
 
-        similarity, weight_sum = rays.evaluate(self.true_theta,
-                                          alpha=torch.tensor([alpha]),
-                                          blur_constant=torch.tensor([blur_constant]),
-                                          clip=False,
-                                          ray_count=ray_count,
-                                          debug_plots=True)
+        similarity, weight_sum = rays.evaluate(self.true_theta, alpha=torch.tensor([alpha]),
+            blur_constant=torch.tensor([blur_constant]), clip=False, ray_count=ray_count, debug_plots=True)
 
         print("Similarity: {:.3f}", similarity)
 
         print("Sum n = {:.3f}", weight_sum)
 
-    def plot_landscape(self, *, load_rays_from_cache: bool=True):
+    def plot_landscape(self, *, load_rays_from_cache: bool = True):
         assert (self.true_theta is not None), "Cannot plot landscape with no ground truth alignment"
 
         m: int = 4
         # alpha = 3.
         expected_weight_sum = 5000.
         # ray_count = int(np.ceil(4. * (torch.norm(self.registration.source_position) / alpha).square() * expected_weight_sum))
-        ray_count = 100000000
+        ray_count = 1000000
         ray_subset_count = ray_count
 
         rays = self.__get_rays(ray_count, load_rays_from_cache=load_rays_from_cache)
@@ -146,7 +129,8 @@ class Main:
         cmap = mpl.colormaps['viridis']
 
         theta_count = 50
-        thetas = torch.cat((self.true_theta.value[0:5].repeat(theta_count, 1), torch.linspace(-torch.pi, torch.pi, theta_count)[:, None]), dim=1)
+        thetas = torch.cat((self.true_theta.value[0:5].repeat(theta_count, 1),
+        torch.linspace(-torch.pi, torch.pi, theta_count)[:, None]), dim=1)
 
         # for analysing new method
         landscapes = torch.zeros(m, theta_count)
@@ -168,15 +152,14 @@ class Main:
             # ss_clipped = ss.clone()
             # ssn_clipped = 0.
 
-            alpha = torch.norm(self.registration.source_position) * torch.sqrt(torch.tensor([2. * expected_weight_sum / float(ray_subset_count)]))
+            alpha = torch.norm(self.registration.source_position) * torch.sqrt(
+                torch.tensor([2. * expected_weight_sum / float(ray_subset_count)]))
 
             debug.tic("Performing {} evaluations for {} rays".format(theta_count, ray_subset_count))
             for i in tqdm(range(theta_count), desc=debug.get_indent()):
                 tic = time.time()
-                similarity, weight_sum = rays.evaluate(Ray.Transformation(thetas[i]),
-                                                  alpha=torch.tensor([alpha]),
-                                                  blur_constant=torch.tensor([blur_constant]),
-                                                  ray_count=ray_subset_count)
+                similarity, weight_sum = rays.evaluate(Ray.Transformation(thetas[i]), alpha=torch.tensor([alpha]),
+                    blur_constant=torch.tensor([blur_constant]), ray_count=ray_subset_count)
                 times[j] += time.time() - tic
                 # print(s, sn)
                 landscapes[j, i] = similarity.item()
@@ -191,7 +174,8 @@ class Main:
                 # average_weight_sums_clipped += sum_n_clipped
 
                 tic = time.time()
-                landscapes_canonical[j, i] = self.canonical(Ray.Transformation(thetas[i]), self.registration.image.data[canonical_mip_level], volume_mip_level=canonical_mip_level)
+                landscapes_canonical[j, i] = self.canonical(Ray.Transformation(thetas[i]),
+                    self.registration.image.data[canonical_mip_level], volume_mip_level=canonical_mip_level)
                 times_canonical[j] += time.time() - tic
 
             debug.toc()
@@ -209,9 +193,11 @@ class Main:
 
         for j in range(m):
             colour = cmap(float(j) / float(m - 1) if m > 1 else 0.5)
-            axes.plot(thetas[:, 5], landscapes[j], color=colour, linestyle='-', label="{}; {:.3f}s".format(j, times[j].item()))
+            axes.plot(thetas[:, 5], landscapes[j], color=colour, linestyle='-',
+                label="{}; {:.3f}s".format(j, times[j].item()))
             # axes.plot(thetas[:, 5], landscapes_clipped[j], label="clipped, av. sum n = {:.3f}".format(average_weight_sums_clipped[j]), color=colour, linestyle='--')
-            axes.plot(thetas[:, 5], landscapes_canonical[j], color=colour, linestyle='--', label="canonical {}; {:.3f}s".format(j, times_canonical[j].item()))
+            axes.plot(thetas[:, 5], landscapes_canonical[j], color=colour, linestyle='--',
+                label="canonical {}; {:.3f}s".format(j, times_canonical[j].item()))
 
         axes.vlines(self.true_theta.value[5].item(), -1., axes.get_ylim()[1])
 
@@ -221,10 +207,7 @@ class Main:
         plt.ylabel("-WZNCC")
         plt.show()
 
-    def plot_distance_correlation(self,
-                                  point_count: int,
-                                  *,
-                                  load_rays_from_cache: bool=True):
+    def plot_distance_correlation(self, point_count: int, *, load_rays_from_cache: bool = True):
         assert (self.true_theta is not None), "Cannot plot distance correlation with no ground truth alignment"
 
         m = 5
@@ -248,10 +231,8 @@ class Main:
             _tic = time.time()
             for i in range(point_count):
                 theta.randomise()
-                similarity, _ = rays.evaluate(theta,
-                                              alpha=torch.tensor([alpha]),
-                                              blur_constant=torch.tensor([blur_constant]),
-                                              ray_count=ray_subset_count)
+                similarity, _ = rays.evaluate(theta, alpha=torch.tensor([alpha]),
+                    blur_constant=torch.tensor([blur_constant]), ray_count=ray_subset_count)
                 distances[i] = self.true_theta.distance(theta)
                 nwznccs[i] = similarity.item()
 
@@ -266,14 +247,13 @@ class Main:
             plt.title("alpha = {:.3f}; correlation = {}".format(alpha, cc[0, 1]))
             plt.show()
 
-
             print("\tCorrelation coefficient = {}".format(cc))
 
             alpha *= 1.5
         toc = time.time()
         print("Done; took {:.3f}s.".format(toc - tic))
 
-    def quantify_distance_correlation(self, load_rays_from_cache: bool=True):
+    def quantify_distance_correlation(self, load_rays_from_cache: bool = True):
         assert (self.true_theta is not None), "Cannot quantify distance correlation with no ground truth alignment"
 
         def se3_from_distance(distance: float) -> Ray.Transformation:
@@ -294,16 +274,13 @@ class Main:
 
         def similarity_from_distance(distance: float) -> float:
             theta = self.true_theta.compose(se3_from_distance(distance))
-            similarity, _ = rays.evaluate(theta,
-                                          alpha=torch.tensor([alpha]),
-                                          blur_constant=torch.tensor([blur_constant]),
-                                          ray_count=ray_subset_count)
+            similarity, _ = rays.evaluate(theta, alpha=torch.tensor([alpha]),
+                blur_constant=torch.tensor([blur_constant]), ray_count=ray_subset_count)
             return similarity.item()
 
         cc = correlation_measure.quantify_correlation(similarity_from_distance, (0., 2.))
 
         debug.toc("Correlation coefficient = {:.3f}".format(cc))
-
 
     def optimise(self):
         print("True theta:", -self.true_theta.value)
@@ -324,7 +301,8 @@ class Main:
         theta.randomise()
 
         _, axes = plt.subplots()
-        Image(self.registration.generate_drr(theta, alpha=self.drr_alpha, image_size=torch.tensor([300, 300]))).display(axes)
+        Image(self.registration.generate_drr(theta, alpha=self.drr_alpha, image_size=torch.tensor([300, 300]))).display(
+            axes)
         plt.axis('square')
         plt.title("DRR at initial orientation = {} (simulated X-ray intensity)".format(theta.value))
         plt.show()
@@ -336,11 +314,11 @@ class Main:
             def closure():
                 optimiser.zero_grad()
                 thetas.append(theta.value)
-                similarity, _ = rays.evaluate_with_grad(theta,
-                                                        alpha=torch.tensor([alpha]),
-                                                        blur_constant=torch.tensor([blur_constant]))
+                similarity, _ = rays.evaluate_with_grad(theta, alpha=torch.tensor([alpha]),
+                    blur_constant=torch.tensor([blur_constant]))
                 similarities.append(similarity.item())
-                print("\tStep {}; similarity = {:.3f} at theta distance = {:.3f}".format(i, similarity.item(), self.true_theta.distance(theta).item()))
+                print("\tStep {}; similarity = {:.3f} at theta distance = {:.3f}".format(i, similarity.item(),
+                    self.true_theta.distance(theta).item()))
                 return similarity
 
             optimiser.step(closure)
@@ -349,7 +327,8 @@ class Main:
         print("Final theta:", theta.value)
 
         _, axes = plt.subplots()
-        Image(self.registration.generate_drr(theta, alpha=self.drr_alpha, image_size=torch.tensor([300, 300]))).display(axes)
+        Image(self.registration.generate_drr(theta, alpha=self.drr_alpha, image_size=torch.tensor([300, 300]))).display(
+            axes)
         plt.axis('square')
         plt.title("DRR at final orientation = {} (simulated X-ray intensity)".format(theta.value))
         plt.show()
@@ -376,21 +355,19 @@ class Main:
         fig.tight_layout()
         plt.show()
 
-    def canonical(self,
-                  theta,
-                  fixed_image_data: torch.Tensor,
-                  *,
-                  volume_mip_level: int=0) -> float:
+    def canonical(self, theta, fixed_image_data: torch.Tensor, *, volume_mip_level: int = 0) -> float:
         assert (self.true_theta is not None), "Cannot assess similarity canonically with no ground truth alignment"
 
-        drr = Image(self.registration.generate_drr(theta, alpha=self.drr_alpha, image_size=torch.tensor(fixed_image_data.size()), mip_level=volume_mip_level))
+        drr = Image(self.registration.generate_drr(theta, alpha=self.drr_alpha,
+            image_size=torch.tensor(fixed_image_data.size()), mip_level=volume_mip_level))
 
         xs = fixed_image_data.flatten()
         ys = drr.data[0].flatten()
         return -tools.weighted_zero_normalised_cross_correlation(xs, ys, torch.ones_like(xs)).item()
 
     def quantify_distance_correlation_canonical(self) -> float:
-        assert (self.true_theta is not None), "Cannot quantify canonical distance correlation with no ground truth alignment"
+        assert (
+          self.true_theta is not None), "Cannot quantify canonical distance correlation with no ground truth alignment"
 
         def se3_from_distance(distance: float) -> Ray.Transformation:
             angle = distance * torch.rand(1)
@@ -411,8 +388,6 @@ class Main:
         debug.toc("Correlation coefficient = {:.3f}".format(cc))
 
 
-
-
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
     ct_path = sys.argv[1]
@@ -427,18 +402,13 @@ if __name__ == "__main__":
     if load_cached:
         main = Main.load("two_d_three_d/cache", device=dev)
     else:
-        main = Main.new_drr_registration(ct_path,
-                                         device=dev,
-                                         image_size=drr_size,
-                                         source_position=torch.tensor([0., 0., 11.]),
-                                         drr_alpha=2000.,
-                                         cache_directory="two_d_three_d/cache")
+        main = Main.new_drr_registration(ct_path, device=dev, image_size=drr_size,
+            source_position=torch.tensor([0., 0., 11.]), drr_alpha=2000., cache_directory="two_d_three_d/cache")
 
     main.plot_landscape(load_rays_from_cache=load_cached)
 
-    #main.optimise()
+    # main.optimise()
 
     # main.plot_distance_correlation(10000)
 
-    # main.quantify_distance_correlation()
-    # main.quantify_distance_correlation_canonical()
+    # main.quantify_distance_correlation()  # main.quantify_distance_correlation_canonical()

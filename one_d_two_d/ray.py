@@ -27,7 +27,7 @@ class Ray:
         return rays[:, 1] - (rays[:, 0] / rays[:, 2]) * rays[:, 3]
 
     @staticmethod
-    def scores(rays, source_position: torch.Tensor, alpha: torch.Tensor=torch.tensor([0.14])) -> torch.Tensor:
+    def scores(rays, source_position: torch.Tensor, alpha: torch.Tensor = torch.tensor([0.14])) -> torch.Tensor:
         """
         Find the scores of the given rays.
 
@@ -42,7 +42,8 @@ class Ray:
         :param alpha: drop-off coefficient for ray score `vs.` distance
         :return: tensor of ray scores
         """
-        scaled_signed_distances = ((rays[:, 0:2] - source_position) * tools.cross_vectors2d(rays[:, 2:4])).sum(dim=1) / alpha
+        scaled_signed_distances = ((rays[:, 0:2] - source_position) * tools.cross_vectors2d(rays[:, 2:4])).sum(
+            dim=1) / alpha
         return torch.exp(- scaled_signed_distances * scaled_signed_distances)
 
     @staticmethod
@@ -51,23 +52,23 @@ class Ray:
         return torch.cat((rands[:, 0:2], torch.nn.functional.normalize(rands[:, 2:4], dim=1)), dim=1)
 
     @staticmethod
-    def generate_true_untransformed(count: torch.Tensor,
-                                    source_position: torch.Tensor,
-                                    *,
-                                    device) -> torch.Tensor:
+    def generate_true_untransformed(count: torch.Tensor, source_position: torch.Tensor, *, device) -> torch.Tensor:
         """
         :param count:
         :param source_position: position of simulated X-ray source
         :return: tensor of rays that would correspond to a `count` pixel DRR sitting on the y-axis
         """
         source_position_device = source_position.to(device)
-        y_plane_intersections = torch.cat((torch.zeros(count.item(), 1, device=device), torch.linspace(-1., 1., count.item(), device=device)[:, None]), dim=1)
-        return torch.cat((source_position_device.repeat((count.item(), 1)), torch.nn.functional.normalize(y_plane_intersections - source_position_device, dim=1)), dim=1)
+        y_plane_intersections = torch.cat((
+        torch.zeros(count.item(), 1, device=device), torch.linspace(-1., 1., count.item(), device=device)[:, None]),
+            dim=1)
+        return torch.cat((source_position_device.repeat((count.item(), 1)),
+        torch.nn.functional.normalize(y_plane_intersections - source_position_device, dim=1)), dim=1)
 
     @staticmethod
     def plot(axes, rays: torch.Tensor, shades: torch.Tensor):
         for i in range(rays.size()[0].item()):
             r: float = shades[i].item()
             row = rays[i]
-            axes.plot([-1.5, 1.5], [row[1] - row[3] * (row[0] + 1.5) / row[2], row[1] - row[3] * (row[0] - 1.5) / row[2]], color=(r, r, r))
-
+            axes.plot([-1.5, 1.5],
+                [row[1] - row[3] * (row[0] + 1.5) / row[2], row[1] - row[3] * (row[0] - 1.5) / row[2]], color=(r, r, r))

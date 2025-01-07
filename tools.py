@@ -4,7 +4,8 @@ from typing import Tuple
 
 
 def rotate_vector2d(vector: torch.Tensor, angle: torch.Tensor) -> torch.Tensor:
-    return torch.matmul(torch.tensor([[torch.cos(angle), -torch.sin(angle)], [torch.sin(angle), torch.cos(angle)]]), vector)
+    return torch.matmul(torch.tensor([[torch.cos(angle), -torch.sin(angle)], [torch.sin(angle), torch.cos(angle)]]),
+        vector)
 
 
 def cross_vectors2d(vectors: torch.Tensor) -> torch.Tensor:
@@ -45,7 +46,8 @@ def grid_sample1d(data: torch.Tensor, positions: torch.Tensor) -> Tuple[torch.Te
     i1s[i1s_out] = 0
 
     # determining image-edge weight modifications
-    weights = (1. - fs) * torch.logical_not(i0s_out).type(torch.float32) + fs * torch.logical_not(i1s_out).type(torch.float32)
+    weights = (1. - fs) * torch.logical_not(i0s_out).type(torch.float32) + fs * torch.logical_not(i1s_out).type(
+        torch.float32)
 
     # sampling
     ret = (1. - fs) * with_zero[i0s] + fs * with_zero[i1s]
@@ -60,7 +62,8 @@ def grid_sample2d(data: torch.Tensor, positions: torch.Tensor) -> Tuple[torch.Te
     :param positions: N x M x 2 matrix of positions
     :return:
     """
-    positions_transformed = .5 * (positions.flip(-1) + 1.) * (torch.tensor(data.size(), dtype=torch.float32, device=data.device) - 1.)
+    positions_transformed = .5 * (positions.flip(-1) + 1.) * (
+          torch.tensor(data.size(), dtype=torch.float32, device=data.device) - 1.)
     i0j0s = torch.floor(positions_transformed.clone().detach()).type(torch.int64)
     fs = positions_transformed - i0j0s.type(torch.float32)
     with_zero = torch.cat((torch.zeros(1, data.size()[1], device=data.device), data))
@@ -72,10 +75,14 @@ def grid_sample2d(data: torch.Tensor, positions: torch.Tensor) -> Tuple[torch.Te
     i1j0s[:, 0] += 1
     i1j1s = i0j0s + 1
 
-    i0j0s_in = torch.logical_and((i0j0s >= torch.tensor([1, 0], device=data.device)).prod(dim=-1), (i0j0s < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1))
-    i0j1s_in = torch.logical_and((i0j1s >= torch.tensor([1, 0], device=data.device)).prod(dim=-1), (i0j1s < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1))
-    i1j0s_in = torch.logical_and((i1j0s >= torch.tensor([1, 0], device=data.device)).prod(dim=-1), (i1j0s < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1))
-    i1j1s_in = torch.logical_and((i1j1s >= torch.tensor([1, 0], device=data.device)).prod(dim=-1), (i1j1s < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1))
+    i0j0s_in = torch.logical_and((i0j0s >= torch.tensor([1, 0], device=data.device)).prod(dim=-1),
+        (i0j0s < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1))
+    i0j1s_in = torch.logical_and((i0j1s >= torch.tensor([1, 0], device=data.device)).prod(dim=-1),
+        (i0j1s < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1))
+    i1j0s_in = torch.logical_and((i1j0s >= torch.tensor([1, 0], device=data.device)).prod(dim=-1),
+        (i1j0s < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1))
+    i1j1s_in = torch.logical_and((i1j1s >= torch.tensor([1, 0], device=data.device)).prod(dim=-1),
+        (i1j1s < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1))
 
     i0j0s[torch.logical_not(i0j0s_in), :] = 0
     i0j1s[torch.logical_not(i0j1s_in), :] = 0
@@ -105,7 +112,8 @@ def grid_sample3d(data: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:
     :param positions: N x M x 3 matrix of positions
     :return:
     """
-    positions_transformed = .5 * (positions + 1.) * (torch.tensor(data.size(), dtype=torch.float32, device=data.device) - 1.)
+    positions_transformed = .5 * (positions + 1.) * (
+          torch.tensor(data.size(), dtype=torch.float32, device=data.device) - 1.)
     i0j0k0s = torch.floor(positions_transformed.clone().detach()).type(torch.int64)
     fs = positions_transformed - i0j0k0s.type(torch.float32)
     with_zero = torch.cat((torch.zeros(data.size()[1], data.size()[2], device=data.device)[None, :, :], data))
@@ -127,7 +135,8 @@ def grid_sample3d(data: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:
     i1j1k1s[:, 2] += 1
 
     def indices_in(indices: torch.Tensor) -> torch.Tensor:
-        return torch.logical_and((indices >= torch.tensor([1, 0, 0], device=data.device)).prod(dim=-1), (indices < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1))
+        return torch.logical_and((indices >= torch.tensor([1, 0, 0], device=data.device)).prod(dim=-1),
+            (indices < torch.tensor(with_zero.size(), device=data.device)).prod(dim=-1))
 
     i0j0k0s_in = indices_in(i0j0k0s)
     i1j0k0s_in = indices_in(i1j0k0s)
@@ -154,15 +163,16 @@ def grid_sample3d(data: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:
     is_i1 = torch.cat((i1j0k0s[:, 0, None], i1j0k1s[:, 0, None], i1j1k0s[:, 0, None], i1j1k1s[:, 0, None]), dim=-1)
     js_i1 = torch.cat((i1j0k0s[:, 1, None], i1j0k1s[:, 1, None], i1j1k0s[:, 1, None], i1j1k1s[:, 1, None]), dim=-1)
     ks_i1 = torch.cat((i1j0k0s[:, 2, None], i1j0k1s[:, 2, None], i1j1k0s[:, 2, None], i1j1k1s[:, 2, None]), dim=-1)
-    i_interpolated = (1. - fs[:, 0, None]) * with_zero[is_i0, js_i0, ks_i0] + fs[:, 0, None] * with_zero[is_i1, js_i1, ks_i1]
+    i_interpolated = (1. - fs[:, 0, None]) * with_zero[is_i0, js_i0, ks_i0] + fs[:, 0, None] * with_zero[
+        is_i1, js_i1, ks_i1]
     j_interpolated = (1. - fs[:, 1, None]) * i_interpolated[:, 0:2] + fs[:, 1, None] * i_interpolated[:, 2:4]
     ret = (1. - fs[:, 2]) * j_interpolated[:, 0] + fs[:, 2] * j_interpolated[:, 1]
 
     return ret
 
-    #ret = (1. - fs) * with_zero[i0s[:, 0], i0s[:, 1], i0s[:, 2]] + fs * with_zero[i1s[:, 0], i1s[:, 1], i1s[:, 2]]
+    # ret = (1. - fs) * with_zero[i0s[:, 0], i0s[:, 1], i0s[:, 2]] + fs * with_zero[i1s[:, 0], i1s[:, 1], i1s[:, 2]]
 
-    #return ret #, weights
+    # return ret #, weights
 
 
 def weighted_zero_normalised_cross_correlation(xs: torch.Tensor, ys: torch.Tensor, ns: torch.Tensor) -> torch.Tensor:
