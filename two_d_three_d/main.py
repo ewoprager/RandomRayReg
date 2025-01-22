@@ -2,7 +2,7 @@ import sys, os
 import torch
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-from typing import Union
+from typing import Union, Tuple
 import time
 import warnings
 from tqdm import tqdm
@@ -54,6 +54,15 @@ class Main:
         true_theta = registration.set_image_from_random_drr(image_size=image_size, drr_alpha=drr_alpha)
         return cls(cls.__init_key, registration, source_position=source_position, drr_alpha=drr_alpha,
             true_theta=true_theta, cache_directory=cache_directory, save_or_load=False)
+
+    @classmethod
+    def new_synthetic_drr_registration(cls, volume_size: Tuple[int, int, int], *, device, image_size: torch.Tensor,
+                                       source_position: torch.Tensor, drr_alpha: float):
+        volume = Volume.from_data(6000. * torch.rand(volume_size, device=device) - 1000.)
+        registration = Registration(Ray, Image, volume, source_position=source_position)
+        true_theta = registration.set_image_from_random_drr(image_size=image_size, drr_alpha=drr_alpha)
+        return cls(cls.__init_key, registration, source_position=source_position, drr_alpha=drr_alpha,
+            true_theta=true_theta)
 
     @classmethod
     def load(cls, cache_directory: str, *, device, regenerate_drr: bool = False,
@@ -387,6 +396,132 @@ class Main:
 
         debug.toc("Correlation coefficient = {:.3f}".format(cc))
 
+    def fourier_grangeat(self):
+        """
+        ! Note: this assumes that the source position is on the z-axis !
+        :return:
+        """
+        assert (self.true_theta is not None), "Cannot do Fourier / Grangeat analysis with no ground truth alignment"
+
+        mip_level = 0
+
+        size = self.registration.image.data[mip_level].size()
+        xs = 2. * torch.arange(0, size[1], 1, dtype=torch.float32) / float(size[1] - 1) - 1.
+        ys = 2. * torch.arange(0, size[0], 1, dtype=torch.float32) / float(size[0] - 1) - 1.
+        ys, xs = torch.meshgrid(ys, xs)
+        sq_mags = xs * xs + ys * ys
+        norm = torch.sqrt(sq_mags + 1e-8)
+        xs_normalised = xs / norm
+        ys_normalised = ys / norm
+
+        source_dist: float = self.registration.source_position[2].item()
+
+        g_tilde = self.registration.image.data[mip_level] * source_dist / torch.sqrt(
+            source_dist * source_dist + sq_mags)
+
+        dy, dx = torch.gradient(g_tilde)
+        radial_derivative = dx * xs_normalised + dy * ys_normalised
+
+        fixed_scaling: torch.Tensor = sq_mags / (source_dist * source_dist) + 1.
+        rhs = torch.fft.fft2(radial_derivative * fixed_scaling)
+
+        plt.pcolormesh(rhs.abs().log(), cmap='gray')
+        plt.axis('square')
+        plt.show()
+
+        size_ct = self.registration.volume.data[mip_level].size()
+        xs_ct = 2. * torch.arange(0, size_ct[2], 1, dtype=torch.float32) / float(size_ct[2] - 1) - 1.
+        ys_ct = 2. * torch.arange(0, size_ct[1], 1, dtype=torch.float32) / float(size_ct[1] - 1) - 1.
+        zs_ct = 2. * torch.arange(0, size_ct[0], 1, dtype=torch.float32) / float(size_ct[0] - 1) - 1.
+        zs_ct, ys_ct, xs_ct = torch.meshgrid(zs_ct, ys_ct, xs_ct)
+        sq_mags_ct = xs_ct * xs_ct + ys_ct * ys_ct + zs_ct * zs_ct
+        norm_ct = torch.sqrt(sq_mags_ct + 1e-8)
+        xs_normalised_ct = xs_ct / norm_ct
+        ys_normalised_ct = ys_ct / norm_ct
+        zs_normalised_ct = zs_ct / norm_ct
+
+        # omega_x = torch.fft.fftfreq(size_ct[2])
+        # omega_y = torch.fft.fftfreq(size_ct[1])
+        # omega_z = torch.fft.fftfreq(size_ct[0])
+        # omega_z, omega_y, omega_x = torch.meshgrid(omega_z, omega_y, omega_x)
+        # omega_radial = omega_x * xs_normalised_ct + omega_y * ys_normalised_ct + omega_z * zs_normalised_ct
+        # print(omega_radial)
+        # vol = omega_radial * 1j * torch.fft.fftn(self.registration.volume.data[mip_level])
+
+        dz_ct, dy_ct, dx_ct = torch.gradient(self.registration.volume.data[mip_level])
+        radial_derivative_ct = dx_ct * xs_normalised_ct + dy_ct * ys_normalised_ct + dz_ct * zs_normalised_ct
+        vol = torch.fft.fftn(radial_derivative_ct * self.registration.volume.data[mip_level])
+
+        zs = torch.zeros_like(xs)
+        ws = torch.ones_like(xs)
+        positions = torch.stack([xs, ys, zs, ws], dim=-1)
+        positions_reshaped = positions.view(-1, 4)
+
+        def evaluate(theta, plot: bool = False) -> float:
+            positions_transformed = torch.matmul(positions_reshaped, theta.inverse().get_matrix().T)
+            positions_transformed = positions_transformed.view(positions.shape)[:, :, 0:3]
+            dirs = torch.nn.functional.normalize(positions_transformed - self.registration.source_position, dim=-1)
+            lambdas = -torch.inner(dirs, self.registration.source_position)
+            grid = self.registration.source_position + lambdas[:, :, None] * dirs
+
+            lhs_real = torch.nn.functional.grid_sample(vol.real[None, None, :, :, :], grid[None, None, :, :, :])[
+                0, 0, 0]
+            lhs_imag = torch.nn.functional.grid_sample(vol.imag[None, None, :, :, :], grid[None, None, :, :, :])[
+                0, 0, 0]
+            lhs = lhs_real + 1j * lhs_imag
+
+            if plot:
+                plt.pcolormesh(lhs.abs().log(), cmap='gray')
+                plt.axis('square')
+                plt.show()
+
+            l = lhs.real.flatten()
+            return -tools.weighted_zero_normalised_cross_correlation(l, rhs.real.flatten(), torch.ones_like(l))
+
+        print("At ground truth: {:.3e}", evaluate(self.true_theta, plot=True))
+
+        cmap = mpl.colormaps['viridis']
+
+        m = 1
+
+        theta_count = 200
+        thetas = torch.cat((
+        self.true_theta.value[0:5].repeat(theta_count, 1), torch.linspace(-torch.pi, torch.pi, theta_count)[:, None]),
+            dim=1)
+
+        landscapes = torch.zeros(m, theta_count)
+
+        # for timing
+        times = torch.zeros(m)
+
+        debug.tic("Evaluating {} landscapes".format(m))
+        for j in range(m):
+            debug.tic("Performing {} evaluations".format(theta_count))
+            for i in tqdm(range(theta_count), desc=debug.get_indent()):
+                tic = time.time()
+                similarity = evaluate(Ray.Transformation(thetas[i]))
+                times[j] += time.time() - tic
+                landscapes[j, i] = similarity
+
+            debug.toc()  # mip_level += 2
+
+        debug.toc()
+
+        _, axes = plt.subplots()
+
+        for j in range(m):
+            colour = cmap(float(j) / float(m - 1) if m > 1 else 0.5)
+            axes.plot(thetas[:, 5], landscapes[j], color=colour, linestyle='-',
+                label="{}; {:.3f}s".format(j, times[j].item()))
+
+        axes.vlines(self.true_theta.value[5].item(), -1., axes.get_ylim()[1])
+
+        plt.legend()
+        plt.title("Optimisation landscape")
+        plt.xlabel("theta (radians)")
+        plt.ylabel("-WZNCC")
+        plt.show()
+
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
@@ -399,13 +534,18 @@ if __name__ == "__main__":
     dev = torch.device('cpu')
     drr_size = torch.tensor([1000, 1000])
 
-    if load_cached:
-        main = Main.load("two_d_three_d/cache", device=dev)
-    else:
-        main = Main.new_drr_registration(ct_path, device=dev, image_size=drr_size,
-            source_position=torch.tensor([0., 0., 11.]), drr_alpha=2000., cache_directory="two_d_three_d/cache")
+    # if load_cached:
+    #     main = Main.load("two_d_three_d/cache", device=dev)
+    # else:
+    #     main = Main.new_drr_registration(ct_path, device=dev, image_size=drr_size,
+    #         source_position=torch.tensor([0., 0., 11.]), drr_alpha=2000., cache_directory="two_d_three_d/cache")
 
-    main.plot_landscape(load_rays_from_cache=load_cached)
+    main = Main.new_synthetic_drr_registration((6, 6, 8), device=dev, image_size=torch.tensor([12, 12]),
+        source_position=torch.tensor([0., 0., 11.]), drr_alpha=2000.)
+
+    main.fourier_grangeat()
+
+    # main.plot_landscape(load_rays_from_cache=load_cached)
 
     # main.optimise()
 

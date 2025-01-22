@@ -39,6 +39,10 @@ class Volume:
         return cls(cls.__init_key, path, torch.tensor(data, device=device))
 
     @classmethod
+    def from_data(cls, data: torch.Tensor):
+        return cls(cls.__init_key, "--- no path; data provided raw ---", data)
+
+    @classmethod
     def load(cls, cache_directory: str, *, device):
         path = torch.load(cache_directory + "/volume.pt")
         return cls.from_file(path, device=device)
@@ -91,13 +95,14 @@ class Volume:
         start_lambdas = lambdas_catted.where(within, torch.inf).min(dim=0)[0]
         end_lambdas = lambdas_catted.where(within, -torch.inf).max(dim=0)[0]
         deltas = ((end_lambdas - start_lambdas) / float(n))[:, None] * rays[:, 3:6]
+        delta_mags = torch.norm(deltas, dim=-1)
 
         ps = rays[:, 0:3] + start_lambdas[:, None] * rays[:, 3:6]
         ret = torch.zeros(rays.size()[0], device=self.data[mip_level].device)
         for _ in range(n):
-            ret += self.samples(ps, mip_level=mip_level)
+            ret += delta_mags * self.samples(ps, mip_level=mip_level)
             ps += deltas
-        ret = 1. - torch.exp(-ret / (alpha * float(n)))
+        ret = 1. - torch.exp(-ret / alpha)
         ret[ret.isnan()] = 0.
         return ret
 
