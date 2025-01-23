@@ -85,10 +85,12 @@ class SE3(Transformation):
         self.value = value
 
     def randomise(self):
+        # translation = -.25 + 0.5 * torch.rand(3)
+        translation = torch.zeros(3)
         orientation = -1. + 2. * torch.rand(3)
         while torch.norm(orientation) > 1.:
             orientation = -1. + 2. * torch.rand(3)
-        self.value = torch.cat((-.25 + 0.5 * torch.rand(3), torch.pi * orientation))
+        self.value = torch.cat((translation, torch.pi * orientation))
 
     def get(self) -> torch.Tensor:
         return self.value

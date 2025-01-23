@@ -138,8 +138,9 @@ class Main:
         cmap = mpl.colormaps['viridis']
 
         theta_count = 50
-        thetas = torch.cat((self.true_theta.value[0:5].repeat(theta_count, 1),
-        torch.linspace(-torch.pi, torch.pi, theta_count)[:, None]), dim=1)
+        thetas = torch.cat((
+        self.true_theta.value[0:5].repeat(theta_count, 1), torch.linspace(-torch.pi, torch.pi, theta_count)[:, None]),
+            dim=1)
 
         # for analysing new method
         landscapes = torch.zeros(m, theta_count)
@@ -396,7 +397,7 @@ class Main:
 
         debug.toc("Correlation coefficient = {:.3f}".format(cc))
 
-    def fourier_grangeat(self):
+    def fourier_grangeat(self, drr_alpha: float):
         """
         ! Note: this assumes that the source position is on the z-axis !
         :return:
@@ -416,8 +417,9 @@ class Main:
 
         source_dist: float = self.registration.source_position[2].item()
 
-        g_tilde = self.registration.image.data[mip_level] * source_dist / torch.sqrt(
-            source_dist * source_dist + sq_mags)
+        g = -drr_alpha * torch.log(1. - self.registration.image.data[mip_level])
+
+        g_tilde = g * source_dist / torch.sqrt(source_dist * source_dist + sq_mags)
 
         dy, dx = torch.gradient(g_tilde)
         radial_derivative = dx * xs_normalised + dy * ys_normalised
@@ -450,7 +452,7 @@ class Main:
 
         dz_ct, dy_ct, dx_ct = torch.gradient(self.registration.volume.data[mip_level])
         radial_derivative_ct = dx_ct * xs_normalised_ct + dy_ct * ys_normalised_ct + dz_ct * zs_normalised_ct
-        vol = torch.fft.fftn(radial_derivative_ct * self.registration.volume.data[mip_level])
+        vol = torch.fft.fftn(radial_derivative_ct)
 
         zs = torch.zeros_like(xs)
         ws = torch.ones_like(xs)
@@ -476,18 +478,17 @@ class Main:
                 plt.show()
 
             l = lhs.real.flatten()
-            return -tools.weighted_zero_normalised_cross_correlation(l, rhs.real.flatten(), torch.ones_like(l))
+            return -tools.weighted_zero_normalised_cross_correlation(l, rhs.real.flatten(), torch.ones_like(l)).item()
 
-        print("At ground truth: {:.3e}", evaluate(self.true_theta, plot=True))
+        print("At ground truth: {:.3e}".format(evaluate(self.true_theta, plot=True)))
 
         cmap = mpl.colormaps['viridis']
 
         m = 1
 
         theta_count = 200
-        thetas = torch.cat((
-        self.true_theta.value[0:5].repeat(theta_count, 1), torch.linspace(-torch.pi, torch.pi, theta_count)[:, None]),
-            dim=1)
+        thetas = torch.cat((self.true_theta.value[0:5].repeat(theta_count, 1),
+        torch.linspace(-torch.pi, torch.pi, theta_count)[:, None]), dim=1)
 
         landscapes = torch.zeros(m, theta_count)
 
@@ -534,16 +535,16 @@ if __name__ == "__main__":
     dev = torch.device('cpu')
     drr_size = torch.tensor([1000, 1000])
 
-    # if load_cached:
-    #     main = Main.load("two_d_three_d/cache", device=dev)
-    # else:
-    #     main = Main.new_drr_registration(ct_path, device=dev, image_size=drr_size,
-    #         source_position=torch.tensor([0., 0., 11.]), drr_alpha=2000., cache_directory="two_d_three_d/cache")
+    if load_cached:
+        main = Main.load("two_d_three_d/cache", device=dev)
+    else:
+        main = Main.new_drr_registration(ct_path, device=dev, image_size=drr_size,
+            source_position=torch.tensor([0., 0., 11.]), drr_alpha=2000., cache_directory="two_d_three_d/cache")
 
-    main = Main.new_synthetic_drr_registration((6, 6, 8), device=dev, image_size=torch.tensor([12, 12]),
-        source_position=torch.tensor([0., 0., 11.]), drr_alpha=2000.)
+    # main = Main.new_synthetic_drr_registration((6, 6, 8), device=dev, image_size=torch.tensor([12, 12]),
+    #     source_position=torch.tensor([0., 0., 11.]), drr_alpha=2000.)
 
-    main.fourier_grangeat()
+    main.fourier_grangeat(drr_alpha=2000.)
 
     # main.plot_landscape(load_rays_from_cache=load_cached)
 
