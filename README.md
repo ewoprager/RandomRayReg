@@ -6,16 +6,6 @@ The analogous 1D/2D image registration task is also implemented.
 
 See [RandomRays.pdf](RandomRays.pdf) for a detailed motivation, derivation and explanation.
 
-
-# Setup
-
-Developed with `Python 3.12.4`.
-
-Install requirements with
-```bash
-pip install -r requirements.txt
-```
-
 # Scripts
 
 ## `two_d_three_d.main`
